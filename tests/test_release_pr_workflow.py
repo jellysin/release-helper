@@ -13,7 +13,7 @@ class ReleasePrWorkflowTests(unittest.TestCase):
     def setUp(self):
         workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-please.yml"
         contents = workflow.read_text(encoding="utf-8")
-        source = contents.split("          python - <<'PY'\n", 1)[1].split("          PY", 1)[0]
+        source = contents.split("          python3 - <<'PY'\n", 1)[1].split("          PY", 1)[0]
         self.program = compile(dedent(source), str(workflow), "exec")
         self.dispatch = Mock()
 
