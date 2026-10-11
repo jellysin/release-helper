@@ -8,8 +8,8 @@ current base.
 ## Validate locally
 
 Use the Python version pinned in `.python-version`; CI and the composite actions read
-that file. The reusable workflow runs its standard-library dispatch program on the
-runner image's `python3` and sets up no interpreter. Production code supports Python
+that file. The reusable workflow reads it from its own commit and refuses any other
+`python3` before its standard-library programs run. Production code supports Python
 3.13 and newer and needs no pip installation. Development dependencies are pinned and
 hash checked:
 
@@ -27,6 +27,12 @@ actionlint
 register, audit). The governance targets run the Praetor engine that `PRAETOR_REF` in
 `.github/workflows/ci.yml` pins; `.config/lefthook/engine.sh` installs it with Go on
 first use, and the Git hooks call the same launcher.
+
+The tests need `actionlint` on `PATH` and fail without it. `.github/actionlint.yaml`
+holds the one workflow-lint exception: `actionlint` 1.7.12 does not know the documented
+`job.workflow_repository` and `job.workflow_sha` values (rhysd/actionlint#707).
+`tests/test_workflow_lint_exceptions.py` fails after 2027-01-09 and as soon as
+`actionlint` accepts `release-please.yml` without the entry; remove the file then.
 
 Coverage must reach 85%, including branches. Tests use two plugin identities and
 temporary directories; they do not publish releases. Record unavailable validation.

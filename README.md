@@ -125,6 +125,12 @@ It explicitly dispatches the caller's `ci.yml` for at most 20 returned release P
 with a 60-second timeout per dispatch. It exposes no publication inputs or tag
 output and never dispatches a publication workflow.
 
+Its programs run on the interpreter `.python-version` names, not on the one the runner image
+ships. The job reads that file from the helper commit that defines the workflow
+(`job.workflow_repository` at `job.workflow_sha`) and refuses any other `python3`
+(`tests/test_release_pr_workflow.py`). The caller's workflow token must be able to read the
+helper repository, and GitHub Enterprise Server does not provide these two values.
+
 Release-please stops while a merged release PR still carries `autorelease: pending`,
 and with `skip-github-release` nothing moves that label. The workflow's first step
 therefore marks a merged release PR `autorelease: tagged` once the tag `v<version>`

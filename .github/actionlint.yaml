@@ -1,0 +1,8 @@
+# One exception, held by tests/test_workflow_lint_exceptions.py: the test fails after 2027-01-09
+# and as soon as actionlint accepts the workflow without this entry.
+# Reason: actionlint 1.7.12 does not know the documented job.workflow_repository and
+# job.workflow_sha values (rhysd/actionlint#707).
+paths:
+  .github/workflows/release-please.yml:
+    ignore:
+      - '^property "workflow_(repository|sha)" is not defined in object type \{check_run_id: number; container: .+\}$'
