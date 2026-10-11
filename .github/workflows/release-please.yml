@@ -20,15 +20,12 @@ jobs:
           token: ${{ github.token }}
           target-branch: main
           skip-github-release: true
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14.7'
       - name: Explicitly dispatch release PR checks
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_PRS: ${{ steps.release.outputs.prs || '[]' }}
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import json
           import os
           import subprocess

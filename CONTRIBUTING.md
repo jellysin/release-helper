@@ -6,8 +6,10 @@ Required checks use `strict: false`; merging does not require an up-to-date bran
 
 ## Validate locally
 
-Use Python 3.14.7, pinned in `.python-version`. Production code supports Python 3.13
-and newer and needs no pip installation. Development dependencies are pinned and
+Use the Python version pinned in `.python-version`; CI and the composite actions read
+that file. The reusable workflow runs its standard-library dispatch program on the
+runner image's `python3` and sets up no interpreter. Production code supports Python
+3.13 and newer and needs no pip installation. Development dependencies are pinned and
 hash checked:
 
 ```sh
