@@ -113,8 +113,8 @@ dependency tree and frontend development tools are outside this production graph
 
 ## GitHub Actions
 
-Consume `actions/package`, `actions/prepare`, `actions/publish`, or `actions/catalog`
-at a reviewed full commit SHA. Actions use their own downloaded directory; callers do not copy
+Consume `actions/package`, `actions/prepare`, `actions/publish`, `actions/catalog`, or
+`actions/server-check` at a reviewed full commit SHA. Actions use their own downloaded directory; callers do not copy
 scripts or check out a mutable tooling branch.
 
 The reusable `.github/workflows/release-please.yml` collects conventional commits
@@ -185,6 +185,54 @@ approved commit and runs the command again; it then only adds the draft.
 
 This repository prepares its own releases with the same workflow file and the action
 from its own checkout; CONTRIBUTING.md describes the steps.
+
+## Server check
+
+`server-check` answers one question about a plugin repository file: does a real
+Jellyfin server offer every entry in it? Validation of the file's form cannot answer
+that. A server drops each version whose `targetAbi` is above its own version, and an
+unreadable file gives an empty list without an error.
+
+```sh
+python tools.py server-check --manifest manifest.json
+```
+
+The command validates the file, starts one throwaway server container, hands it a
+copy of the file and reads back what the server offers. It needs Docker and nothing
+else; it takes no token and never writes the file. Each run prints the image digest
+that ran and the version the server reported. A refusal names every withheld entry
+(at most 20 lines) with identity, version and `targetAbi`, and the command exits 1.
+
+Two built-in control entries run beside the file in every check. One is compatible
+with every supported server and must be offered; the others name an ABI above every
+server and must be withheld. A server that offers nothing, or that does not filter,
+therefore fails the check instead of passing an empty comparison. An empty file
+passes with `0 expected entries` once the controls passed.
+
+The default server is the reviewed image in `SERVER_IMAGE`
+(`jellysin_tooling/servercheck.py`), tag and digest together; Renovate proposes
+updates. `--image` selects another server, for example the floor a plugin supports.
+Accepted form: `jellyfin/jellyfin[:tag]@sha256:<digest>`. The digest decides what
+runs, and the command refuses a container that runs another one.
+
+`--emit-fixture <kind> <new path>` writes a valid plugin repository file for a
+caller's own proof and never replaces a file:
+
+- `wrong-abi`: one entry above every server; the check must refuse it.
+- `floor`: one entry at the floor; every supported server offers it.
+
+A consumer proves its job in both directions: the check passes on its real file and
+fails on the `wrong-abi` fixture with the `does not offer` line in the output. An exit
+status alone does not show which refusal happened.
+
+`actions/server-check` runs the same command with the inputs `manifest` and `image`.
+
+Bounds: 120 seconds until the server answers, 20 seconds per network step and 60
+seconds per answer, 4 MiB per answer, 10 minutes for the image pull, 1536 MiB and two CPUs for the container. The
+container has no volume, its port is published on the loopback address only, and it
+is stopped and removed on success, failure and termination. The command speaks plain
+HTTP to that one loopback port and to no other host; the server reads the files from
+its own web directory, so no file leaves the machine.
 
 ## Plugin repository trust and recovery
 

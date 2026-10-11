@@ -31,6 +31,12 @@ first use, and the Git hooks call the same launcher.
 Coverage must reach 85%, including branches. Tests use two plugin identities and
 temporary directories; they do not publish releases. Record unavailable validation.
 
+The unit tests of `server-check` run against a stand-in server and a stand-in container
+runtime and start no container. The proof on a real Jellyfin server is two steps of the
+`CI` job: the `floor` fixture must pass, and the `wrong-abi` fixture must fail with
+exit status 1 and its `does not offer` line. A change of `SERVER_IMAGE` is reviewed
+like a dependency update, tag and digest together; those two steps run it before merge.
+
 `pyproject.toml` declares supported runtimes (`>=3.13`); `.python-version` pins the
 exact CI interpreter. Renovate's [PEP 621 manager](https://docs.renovatebot.com/modules/manager/pep621/#dependency-types)
 identifies the former as `requires-python`. Its scoped

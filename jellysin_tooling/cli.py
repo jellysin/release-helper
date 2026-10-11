@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import catalog, changelog, inventory, package, policy, prepare, release
+from . import catalog, changelog, inventory, package, policy, prepare, release, servercheck
 from .common import ValidationError, metadata, read_json, require
 from .github import GitHub, command
 
@@ -42,6 +42,11 @@ def parser():
     validate = commands.add_parser("validate-catalog")
     validate.add_argument("--manifest", default="manifest.json")
     validate.add_argument("--allowlist", default="plugins.json")
+    server = commands.add_parser("server-check")
+    source = server.add_mutually_exclusive_group(required=True)
+    source.add_argument("--manifest")
+    source.add_argument("--emit-fixture", nargs=2, metavar=("KIND", "PATH"))
+    server.add_argument("--image")
     check = commands.add_parser("check-policy")
     check.add_argument("--directory", default=".")
     return root
@@ -84,12 +89,23 @@ def run_package(arguments):
             stream.write(f"directory={Path(arguments.output_directory).resolve()}\n")
 
 
+def run_server_check(arguments):
+    if arguments.emit_fixture:
+        require(arguments.image is None, "A fixture is written without a server image")
+        servercheck.emit_fixture(*arguments.emit_fixture)
+        return
+    servercheck.check(arguments.manifest, arguments.image)
+
+
 def run(arguments):
     if arguments.command == "check-policy":
         policy.check_repository(arguments.directory)
         return
     if arguments.command == "package":
         run_package(arguments)
+        return
+    if arguments.command == "server-check":
+        run_server_check(arguments)
         return
     if arguments.command == "prepare":
         prepare.prepare(
