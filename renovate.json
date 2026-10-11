@@ -12,6 +12,19 @@
   "labels": [
     "dependencies"
   ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Reviewed Jellyfin server image that the server check starts by default",
+      "managerFilePatterns": [
+        "/^jellysin_tooling/servercheck\\.py$/"
+      ],
+      "matchStrings": [
+        "SERVER_IMAGE = \"(?<depName>jellyfin/jellyfin):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
   "packageRules": [
     {
       "description": "Preserve supported Python runtimes while updating exact CI interpreter pins separately",

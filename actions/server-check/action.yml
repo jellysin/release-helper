@@ -1,0 +1,24 @@
+name: Check plugin repository against a Jellyfin server
+description: Load a plugin repository file into a pinned Jellyfin server and fail when the server withholds an entry.
+inputs:
+  manifest:
+    description: Plugin repository manifest file; it is read and never written.
+    required: true
+  image:
+    description: Digest-pinned jellyfin/jellyfin image; empty selects the reviewed default of this tooling version.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version-file: ${{ github.action_path }}/../../.python-version
+    - shell: bash
+      env:
+        TOOL_ROOT: ${{ github.action_path }}/../..
+        MANIFEST_PATH: ${{ inputs.manifest }}
+        SERVER_IMAGE: ${{ inputs.image }}
+      run: |
+        args=(--manifest "$MANIFEST_PATH")
+        if [[ -n "$SERVER_IMAGE" ]]; then args+=(--image "$SERVER_IMAGE"); fi
+        python "$TOOL_ROOT/tools.py" server-check "${args[@]}"
