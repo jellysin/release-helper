@@ -1,5 +1,27 @@
 # JellySin Release Helper
 
+<!-- praetor:readme-governance:start -->
+[![HISS Adopted][praetor-hiss-badge]][praetor-hiss-agents]
+
+Praetor manages this repository's declared governance policy. This managed
+block records adoption state; it is not a verification certificate.
+
+**Verification**: `make verify-all` runs the repository's configured
+verification cascade.
+
+**HISS Audit**: `praetorctl audit` enforces policy, generated-surface
+integrity, and the debt ratchet.
+
+**Context Sync**: `praetorctl compile-context --verify` verifies every
+generated agent context against `AGENTS.md`.
+
+**Debt Baseline**: `.standards-baseline.json` anchors the debt ratchet at
+1 recorded infraction; audit forbids growth.
+
+[praetor-hiss-badge]: https://img.shields.io/badge/Standards-HISS%20Adopted%20(1%20baselined)-yellow
+[praetor-hiss-agents]: https://github.com/jellysin/release-helper/blob/HEAD/AGENTS.md
+<!-- praetor:readme-governance:end -->
+
 Shared, versioned build and release tools for independent Jellyfin 12 plugins.
 Python's standard library handles packaging and plugin repository validation; GitHub CLI
 verifies signed provenance and performs repository-scoped publication. None of

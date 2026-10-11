@@ -1,20 +1,47 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
   "dependencyDashboard": true,
   "minimumReleaseAge": "3 days",
   "rangeStrategy": "pin",
   "automerge": false,
   "prConcurrentLimit": 5,
-  "labels": ["dependencies"],
+  "labels": [
+    "dependencies"
+  ],
   "packageRules": [
     {
       "description": "Preserve supported Python runtimes while updating exact CI interpreter pins separately",
-      "matchManagers": ["pep621"],
-      "matchDepTypes": ["requires-python"],
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepTypes": [
+        "requires-python"
+      ],
       "rangeStrategy": "widen"
     },
-    {"matchManagers": ["github-actions"], "groupName": "GitHub Actions"},
-    {"matchUpdateTypes": ["major"], "groupName": null}
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null
+    },
+    {
+      "description": "praetor-managed files: praetorctl adopt ships their updates and praetorctl audit locks them byte for byte",
+      "matchFileNames": [
+        ".devcontainer/devcontainer.json",
+        ".devcontainer/Dockerfile.praetor"
+      ],
+      "enabled": false
+    }
   ]
 }

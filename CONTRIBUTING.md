@@ -2,7 +2,8 @@
 
 Develop on a feature branch from main and submit a pull request with a Conventional
 Commit title. Squash merging keeps release notes attributable to reviewed changes.
-Required checks use `strict: false`; merging does not require an up-to-date branch.
+Required checks are strict: a pull request merges only when its branch contains the
+current base.
 
 ## Validate locally
 
@@ -21,6 +22,11 @@ python -m coverage report
 python tools.py check-policy
 actionlint
 ```
+
+`make verify-all` runs these commands and the governance checks (agent context, text
+register, audit). The governance targets run the Praetor engine that `PRAETOR_REF` in
+`.github/workflows/ci.yml` pins; `.config/lefthook/engine.sh` installs it with Go on
+first use, and the Git hooks call the same launcher.
 
 Coverage must reach 85%, including branches. Tests use two plugin identities and
 temporary directories; they do not publish releases. Record unavailable validation.
