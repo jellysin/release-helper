@@ -2,7 +2,7 @@
 
 from urllib.parse import quote
 
-from .common import digest, require
+from .common import TOOL_NAME, digest, require
 
 
 def file_entries(files):
@@ -83,7 +83,7 @@ def document(info, version, commit, created, files, inventory=None):
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"{info['name']} {version}",
         "documentNamespace": f"https://github.com/{info['repository']}/sbom/{version}/{commit}",
-        "creationInfo": {"created": created, "creators": ["Tool: jellysin-plugin-tooling-1"]},
+        "creationInfo": {"created": created, "creators": [f"Tool: {TOOL_NAME}-1"]},
         "packages": [root, *dependencies],
         "files": entries,
         "relationships": [

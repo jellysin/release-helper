@@ -7,7 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from .common import MAX_ASSET, MAX_JSON, ValidationError, decode_json, require
+from .common import MAX_ASSET, MAX_JSON, TOOL_NAME, ValidationError, decode_json, require
 
 DOWNLOAD_HOSTS = {"github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
 
@@ -36,7 +36,7 @@ class GitHub:
         for _attempt in range(5):
             safe_url(url, hosts)
             headers = {
-                "User-Agent": "jellysin-plugin-tooling",
+                "User-Agent": TOOL_NAME,
                 "Accept": "application/vnd.github+json" if authenticated and not binary else "application/octet-stream",
             }
             if authenticated and self.token:

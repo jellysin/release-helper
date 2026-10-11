@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from . import catalog, changelog, inventory, package, policy, prepare, release, servercheck
-from .common import ValidationError, metadata, read_json, require
+from .common import TOOL_NAME, ValidationError, metadata, read_json, require
 from .github import GitHub, command
 
 
@@ -149,9 +149,9 @@ def main():
     try:
         run(parser().parse_args())
     except ValidationError as exc:
-        print(f"jellysin-tooling: {exc}", file=sys.stderr)
+        print(f"{TOOL_NAME}: {exc}", file=sys.stderr)
         raise SystemExit(1) from None
     except (OSError, ValueError, KeyError, TypeError) as exc:
         # Validations contain controlled labels, never raw remote values or credential data.
-        print(f"jellysin-tooling: {type(exc).__name__}: operation failed validation or I/O", file=sys.stderr)
+        print(f"{TOOL_NAME}: {type(exc).__name__}: operation failed validation or I/O", file=sys.stderr)
         raise SystemExit(1) from None

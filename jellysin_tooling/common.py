@@ -15,6 +15,8 @@ MAX_FILES = 32
 MAX_RELEASES = 1000
 MAX_NOTES = 4096
 MAX_BODY = 65536
+# The name this tool gives itself in requests, SBOMs and messages; equals the project name.
+TOOL_NAME = "jellysin-release-helper"
 # The one place that names the supported Jellyfin major; both ABI validators read it.
 JELLYFIN_ABI_MAJOR = 12
 REPOSITORY = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}")
