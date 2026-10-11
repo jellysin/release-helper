@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/jellysin/release-helper/compare/v1.0.3...v1.1.0) (2026-10-11)
+
+
+### Features
+
+* add prepare, which creates the release tag and one unpublished draft ([#29](https://github.com/jellysin/release-helper/issues/29)) ([c8f92cf](https://github.com/jellysin/release-helper/commit/c8f92cf59c5cacc89c35322b7834c0f073af9067)), closes [#20](https://github.com/jellysin/release-helper/issues/20)
+* hold server references at the ABI floor and carry text changelogs ([#28](https://github.com/jellysin/release-helper/issues/28)) ([f85b1ee](https://github.com/jellysin/release-helper/commit/f85b1eea95e803ee2e649a1b5ec4e0c824ecfb60)), closes [#22](https://github.com/jellysin/release-helper/issues/22)
+
 ## [1.0.3](https://github.com/jellysin/plugin-tooling/compare/v1.0.2...v1.0.3) (2026-09-08)
 
 
