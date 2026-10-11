@@ -14,6 +14,30 @@ jobs:
       pull-requests: write
       actions: write
     steps:
+      # The inline programs below run on the interpreter .python-version names, not on the one
+      # the runner image ships. A called workflow has no checkout of its own repository, so the
+      # pin file comes from the commit that defines this workflow.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          sparse-checkout: .python-version
+          sparse-checkout-cone-mode: false
+          path: .release-helper
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .release-helper/.python-version
+      - name: Refuse an interpreter other than the pinned one
+        run: |
+          python3 - <<'PY'
+          import platform
+          from pathlib import Path
+          pinned = Path('.release-helper/.python-version').read_text(encoding='utf-8').strip()
+          if platform.python_version() != pinned:
+              raise SystemExit(f'python3 is {platform.python_version()}, the pin is {pinned}')
+          print(f'python3 is the pinned {pinned}')
+          PY
       # release-please aborts while a merged release PR still carries "autorelease: pending", and
       # with skip-github-release nothing moves that label. This step moves it once the version tag
       # names the PR's merge commit; without that tag the label stays and the abort is correct.

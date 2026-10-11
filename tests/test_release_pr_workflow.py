@@ -1,7 +1,8 @@
-"""Run the reusable workflow's two inline programs as the workflow does, against a stand-in gh."""
+"""Run the reusable workflow's inline programs as the workflow does, against a stand-in gh."""
 
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,9 @@ WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "rele
 STUB = Path(__file__).with_name("stub_gh.py")
 LABELS = "Mark merged release PRs whose tag names their merge commit"
 DISPATCH = "Explicitly dispatch release PR checks"
+INTERPRETER = "Refuse an interpreter other than the pinned one"
+CHECKOUT = "      - uses: actions/checkout@"
+SETUP = "      - uses: actions/setup-python@"
 ACTION = "      - uses: googleapis/release-please-action@"
 START = "          python3 - <<'PY'\n"
 REPO = "jellysin/plugin-lastfm"
@@ -258,7 +262,7 @@ class WorkflowShapeTests(unittest.TestCase):
         positions = [contents.index(f"      - name: {LABELS}\n"), contents.index(ACTION)]
         positions.append(contents.index(f"      - name: {DISPATCH}\n"))
         self.assertEqual(sorted(positions), positions)
-        self.assertEqual(2, contents.count(START))
+        self.assertEqual(3, contents.count(START))
         self.assertEqual(1, contents.count("skip-github-release: true"))
 
     def test_every_external_process_has_a_deadline(self):
@@ -267,3 +271,63 @@ class WorkflowShapeTests(unittest.TestCase):
                 calls = [line for line in source(step).splitlines() if "subprocess.run(" in line]
                 self.assertEqual(1, len(calls))
                 self.assertIn("timeout=60)", calls[0])
+
+
+class InterpreterPinTests(unittest.TestCase):
+    def judge(self, pinned):
+        """Run the guard as the workflow does, beside the pin file its checkout step leaves."""
+        with tempfile.TemporaryDirectory(prefix="jellysin-workflow-") as directory:
+            if pinned is not None:
+                target = Path(directory) / ".release-helper" / ".python-version"
+                target.parent.mkdir()
+                target.write_text(f"{pinned}\n", encoding="utf-8")
+            return subprocess.run(
+                [sys.executable, "-"],
+                input=source(INTERPRETER),
+                cwd=directory,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+            )
+
+    def test_the_pinned_interpreter_passes(self):
+        done = self.judge(platform.python_version())
+        self.assertEqual((0, ""), (done.returncode, done.stderr))
+        self.assertEqual(f"python3 is the pinned {platform.python_version()}\n", done.stdout)
+
+    def test_any_other_interpreter_is_refused(self):
+        major, minor, patch = platform.python_version_tuple()
+        # The runner image's own interpreter, the next patch release, and a prefix of the pin.
+        for pinned in ("3.12.3", f"{major}.{minor}.{int(patch) + 1}", f"{major}.{minor}"):
+            with self.subTest(pinned=pinned):
+                done = self.judge(pinned)
+                self.assertEqual(1, done.returncode)
+                self.assertEqual(f"python3 is {platform.python_version()}, the pin is {pinned}\n", done.stderr)
+
+    def test_a_missing_pin_file_is_refused(self):
+        done = self.judge(None)
+        self.assertNotEqual(0, done.returncode)
+        self.assertIn("FileNotFoundError", done.stderr)
+
+    def test_the_pin_is_read_from_the_workflow_commit_before_any_program_runs(self):
+        contents = WORKFLOW.read_text(encoding="utf-8")
+        positions = [contents.index(CHECKOUT), contents.index(SETUP)]
+        positions += [contents.index(f"      - name: {INTERPRETER}\n"), contents.index(START)]
+        positions.append(contents.index(f"      - name: {LABELS}\n"))
+        self.assertEqual(sorted(positions), positions)
+        self.assertEqual((1, 1), (contents.count(CHECKOUT), contents.count(SETUP)))
+        checkout = contents[positions[0] : positions[1]].splitlines()[2:]
+        self.assertEqual(
+            [
+                "repository: ${{ job.workflow_repository }}",
+                "ref: ${{ job.workflow_sha }}",
+                "sparse-checkout: .python-version",
+                "sparse-checkout-cone-mode: false",
+                "path: .release-helper",
+                "persist-credentials: false",
+            ],
+            [line.strip() for line in checkout],
+        )
+        setup = contents[positions[1] : positions[2]].splitlines()[2:]
+        self.assertEqual(["python-version-file: .release-helper/.python-version"], [line.strip() for line in setup])

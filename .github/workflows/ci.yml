@@ -30,6 +30,17 @@ jobs:
           python tools.py check-policy
       - name: Run the shared check action from this checkout
         uses: ./actions/check
+      # Ahead of the tests: tests/test_workflow_lint_exceptions.py runs this binary from PATH.
+      - name: Validate workflows with checksum-pinned actionlint
+        env:
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz --output "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/actionlint-bin"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint-bin" actionlint
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
+          echo "$RUNNER_TEMP/actionlint-bin" >> "$GITHUB_PATH"
       - name: Test packaging, publication, network isolation and multi-plugin catalogs
         run: |
           python -m coverage run -m unittest discover -s tests
@@ -50,14 +61,6 @@ jobs:
           printf '%s\n' "$output"
           [[ "$status" -eq 1 ]]
           grep --fixed-strings --quiet 'does not offer d0973630-1561-4f3a-b26e-664229e6043e 1.0.0.0 (targetAbi 12.65534.0.0)' <<<"$output"
-      - name: Validate workflows with checksum-pinned actionlint
-        env:
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-        run: |
-          curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz --output "$RUNNER_TEMP/actionlint.tar.gz"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -color
   governance:
     name: governance (praetor)
     runs-on: ubuntu-24.04
