@@ -13,10 +13,16 @@ MAX_JSON = 4 * 1024 * 1024
 MAX_ASSET = 64 * 1024 * 1024
 MAX_FILES = 32
 MAX_RELEASES = 1000
+MAX_NOTES = 4096
+# The one place that names the supported Jellyfin major; both ABI validators read it.
+JELLYFIN_ABI_MAJOR = 12
 REPOSITORY = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}")
 SHA = re.compile(r"[0-9a-f]{40}")
 SEMVER = re.compile(r"(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})")
 HOST_PREFIXES = ("system.", "microsoft.", "jellyfin.", "emby.", "mediabrowser.")
+IMAGE_URL = re.compile(r"https://raw\.githubusercontent\.com/([^/]+/[^/]+)/[0-9a-f]{40}/(.+)")
+IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".webp")
+DIRECTION_CONTROLS = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
 
 
 class ValidationError(ValueError):
@@ -42,6 +48,35 @@ def repository(value):
 def semver(value):
     require(isinstance(value, str) and SEMVER.fullmatch(value), "Expected stable x.y.z version")
     require(all(int(part) <= 65534 for part in value.split(".")), "Version exceeds assembly limit")
+    return value
+
+
+def target_abi(value):
+    """Return the x.y.z server release that a four-part target ABI of the supported major names."""
+    number = r"(?:0|[1-9][0-9]{0,4})"
+    pattern = rf"({JELLYFIN_ABI_MAJOR}\.{number}\.{number})\.0"
+    match = re.fullmatch(pattern, value) if isinstance(value, str) else None
+    require(match, f"Only Jellyfin {JELLYFIN_ABI_MAJOR} ABI supported")
+    require(all(int(part) <= 65534 for part in value.split(".")), "ABI exceeds assembly limit")
+    return match.group(1)
+
+
+def release_notes(value):
+    require(isinstance(value, str) and 0 < len(value) <= MAX_NOTES, "Invalid release notes")
+    require(value == value.strip(), "Release notes carry surrounding whitespace")
+    unsafe = (char != "\n" and ord(char) < 32 or char == "\x7f" or char in DIRECTION_CONTROLS for char in value)
+    require(not any(unsafe), "Control character in release notes")
+    return value
+
+
+def image_url(value, owner):
+    """Accept only a commit-pinned image file inside the plugin's own repository."""
+    match = IMAGE_URL.fullmatch(text(value, "image URL", 512))
+    require(match and match.group(1) == owner, "Image URL must be a commit-pinned file in the plugin repository")
+    parts = match.group(2).split("/")
+    require(len(parts) <= 8 and parts[-1].lower().endswith(IMAGE_TYPES), "Unsupported image path")
+    for part in parts:
+        filename(part)
     return value
 
 
@@ -122,7 +157,7 @@ def metadata(value):
         "assemblyFile",
         "repository",
     }
-    require(required <= value.keys() <= required | {"packageFiles"}, "Unexpected metadata fields")
+    require(required <= value.keys() <= required | {"packageFiles", "imageUrl"}, "Unexpected metadata fields")
     for key in ("name", "description", "overview", "owner", "category"):
         text(value[key], key)
     try:
@@ -130,11 +165,9 @@ def metadata(value):
     except (ValueError, TypeError, AttributeError) as exc:
         raise ValidationError("Invalid GUID") from exc
     repository(value["repository"])
-    require(
-        re.fullmatch(r"12\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.0", value["targetAbi"] or ""),
-        "Only Jellyfin 12 ABI supported",
-    )
-    require(all(int(part) <= 65534 for part in value["targetAbi"].split(".")), "ABI exceeds assembly limit")
+    target_abi(value["targetAbi"])
+    if "imageUrl" in value:
+        image_url(value["imageUrl"], value["repository"])
     assembly = filename(value["assemblyFile"])
     require(assembly.endswith(".dll"), "Main assembly must be a DLL")
     files = value.get("packageFiles", [])

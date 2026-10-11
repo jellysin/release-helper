@@ -6,6 +6,8 @@ import re
 from .common import digest, json_bytes, read_json, require, semver
 
 MAX_PACKAGES = 512
+HOST_FAMILY = "jellyfin."
+HOST_REFERENCE = "jellyfin.controller"
 PACKAGE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}")
 VERSION = re.compile(r"[0-9]+(?:\.[0-9]+){1,3}(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?")
 
@@ -117,6 +119,12 @@ def from_restore(lock_path, assets_path, runtime_path, global_json_path):
     packages = locked_packages(lock, framework)
     verify_restored_graph(read_json(assets_path), framework, packages)
     require(runtime.keys() <= packages.keys(), "Runtime dependency absent from production lock")
+    # A direct reference to a server package that the runtime list omits would escape the floor rule.
+    direct = {name.casefold() for name, entry in lock["dependencies"][framework].items() if entry["type"] == "Direct"}
+    require(
+        all(key in runtime for key in direct if key.startswith(HOST_FAMILY)),
+        "Direct Jellyfin reference is not declared host-provided",
+    )
     for key, entry in packages.items():
         require(key not in runtime or runtime[key] == entry["version"], "Runtime dependency version differs from lock")
         entry["hostProvided"] = key in runtime
@@ -169,6 +177,20 @@ def validate(value):
         require(type(entry["hostProvided"]) is bool, "Invalid inventory package owner")
     validate_edges(packages, identities)
     return value
+
+
+def require_floor(inventory, floor):
+    """Hold every host-provided Jellyfin package at the release the target ABI names."""
+    versions = {
+        entry["id"].casefold(): entry["version"]
+        for entry in inventory["packages"]
+        if entry["hostProvided"] and entry["id"].casefold().startswith(HOST_FAMILY)
+    }
+    # A comparison with nothing to compare would pass on a renamed or undeclared package.
+    require(HOST_REFERENCE in versions, "Jellyfin.Controller is not a declared host dependency")
+    # An older server disables a plugin built against a newer release; a floor above the reference is untested.
+    require(set(versions.values()) == {floor}, "Jellyfin reference differs from the target ABI floor")
+    return inventory
 
 
 def validate_edges(packages, identities):

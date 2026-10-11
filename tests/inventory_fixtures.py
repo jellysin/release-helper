@@ -5,20 +5,20 @@ import base64
 from jellysin_tooling.common import json_bytes
 
 
-def restore_files(root):
+def restore_files(root, version="12.0.0"):
     hash_a = base64.b64encode(b"a" * 64).decode()
     hash_b = base64.b64encode(b"b" * 64).decode()
     lock = {
         "version": 1,
         "dependencies": {
             "net10.0": {
-                "Host.API": {
+                "Jellyfin.Controller": {
                     "type": "Direct",
-                    "resolved": "12.0.0",
+                    "resolved": version,
                     "contentHash": hash_a,
-                    "dependencies": {"Host.Data": "12.0.0"},
+                    "dependencies": {"Jellyfin.Data": version},
                 },
-                "Host.Data": {"type": "Transitive", "resolved": "12.0.0", "contentHash": hash_b},
+                "Jellyfin.Data": {"type": "Transitive", "resolved": version, "contentHash": hash_b},
             }
         },
     }
@@ -26,20 +26,20 @@ def restore_files(root):
         "version": 4,
         "targets": {
             "net10.0": {
-                "Host.API/12.0.0": {"type": "package", "dependencies": {"Host.Data": "12.0.0"}},
-                "Host.Data/12.0.0": {"type": "package"},
+                f"Jellyfin.Controller/{version}": {"type": "package", "dependencies": {"Jellyfin.Data": version}},
+                f"Jellyfin.Data/{version}": {"type": "package"},
             }
         },
         "libraries": {
-            "Host.API/12.0.0": {"type": "package", "sha512": hash_a},
-            "Host.Data/12.0.0": {"type": "package", "sha512": hash_b},
+            f"Jellyfin.Controller/{version}": {"type": "package", "sha512": hash_a},
+            f"Jellyfin.Data/{version}": {"type": "package", "sha512": hash_b},
         },
         "packageFolders": {"/first/checkout/cache/": {}},
     }
     runtime = {
         "schemaVersion": 1,
         "targetFramework": "net10.0",
-        "runtimeDependencies": [{"id": "Host.API", "version": "12.0.0", "providedBy": "jellyfin"}],
+        "runtimeDependencies": [{"id": "Jellyfin.Controller", "version": version, "providedBy": "jellyfin"}],
     }
     documents = [lock, assets, runtime, {"sdk": {"version": "10.0.400"}}]
     paths = [

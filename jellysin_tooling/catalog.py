@@ -1,6 +1,7 @@
 """Validate approved releases and reconcile the native Jellyfin manifest atomically."""
 
 import io
+import re
 import tempfile
 import zipfile
 from pathlib import Path
@@ -16,15 +17,21 @@ from .common import (
     decode_json,
     digest,
     filename,
+    image_url,
     json_bytes,
     metadata,
+    release_notes,
     repository,
     require,
     semver,
+    target_abi,
     text,
     timestamp,
 )
 from .github import verify_attestation
+
+PLUGIN_FIELDS = frozenset({"guid", "name", "description", "overview", "owner", "category", "versions"})
+LINK = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
 
 
 def allowlist(value):
@@ -60,7 +67,9 @@ def validate_release(value, approved, tag):
     require(isinstance(value.get("commit"), str) and SHA.fullmatch(value["commit"]), "Invalid source commit")
     require(timestamp(value.get("timestamp")) == value["timestamp"], "Noncanonical release timestamp")
     if "dependencyInventory" in value:
-        inventory.validate(value["dependencyInventory"])
+        inventory.require_floor(inventory.validate(value["dependencyInventory"]), target_abi(info["targetAbi"]))
+    if "changelog" in value:
+        release_notes(value["changelog"])
     asset = value.get("archive")
     require(
         isinstance(asset, dict) and asset.keys() == {"name", "url", "sha256", "md5", "size"}, "Invalid archive metadata"
@@ -115,7 +124,8 @@ def manifest_entry(release):
         "sourceUrl": release["archive"]["url"],
         "checksum": release["archive"]["md5"],
         "timestamp": release["timestamp"],
-        "changelog": f"https://github.com/{info['repository']}/releases/tag/{release['tag']}",
+        # A release without attested notes keeps the release page link that earlier entries carry.
+        "changelog": release.get("changelog", f"https://github.com/{info['repository']}/releases/tag/{release['tag']}"),
     }
 
 
@@ -124,10 +134,7 @@ def validate_manifest(value):
     identities = set()
     for plugin in value:
         require(isinstance(plugin, dict) and isinstance(plugin.get("guid"), str), "Invalid manifest plugin")
-        require(
-            plugin.keys() == {"guid", "name", "description", "overview", "owner", "category", "versions"},
-            "Unexpected manifest fields",
-        )
+        require(PLUGIN_FIELDS <= plugin.keys() <= PLUGIN_FIELDS | {"imageUrl"}, "Unexpected manifest fields")
         require(str(UUID(plugin["guid"])) == plugin["guid"], "Invalid manifest GUID")
         for key in ("name", "description", "overview", "owner", "category"):
             text(plugin[key], key)
@@ -141,6 +148,10 @@ def validate_manifest(value):
             key = version["version"]
             require(key not in seen, "Duplicate catalog version")
             seen.add(key)
+        if "imageUrl" in plugin:
+            sources = {"/".join(version["sourceUrl"].split("/")[3:5]) for version in versions}
+            require(len(sources) == 1, "Image URL needs one source repository")
+            image_url(plugin["imageUrl"], sources.pop())
     return value
 
 
@@ -153,9 +164,7 @@ def validate_version(value):
     version = text(value["version"], "version", 24)
     require(version.endswith(".0"), "Expected four-part plugin version")
     stable = semver(version[:-2])
-    abi = text(value["targetAbi"], "target ABI", 24)
-    require(abi.startswith("12.") and abi.endswith(".0"), "Expected Jellyfin 12 target ABI")
-    semver(abi[:-2])
+    target_abi(value["targetAbi"])
     checksum = value["checksum"]
     require(
         isinstance(checksum, str) and len(checksum) == 32 and all(c in "0123456789abcdef" for c in checksum),
@@ -168,7 +177,11 @@ def validate_version(value):
     require(len(parts) == 6 and parts[2:5] == ["releases", "download", "v" + stable], "Invalid catalog release URL")
     repo = repository("/".join(parts[:2]))
     require(filename(parts[5]) == f"{parts[1]}-{stable}.zip", "Unexpected catalog archive")
-    require(value["changelog"] == f"https://github.com/{repo}/releases/tag/v{stable}", "Unexpected changelog URL")
+    notes = value["changelog"]
+    if notes != f"https://github.com/{repo}/releases/tag/v{stable}":
+        # Notes are text; a lone link may only name the release that the entry describes.
+        require(isinstance(notes, str) and not LINK.match(notes), "Unexpected changelog URL")
+        release_notes(notes)
     return value
 
 
@@ -180,7 +193,7 @@ def merge_manifest(current, releases):
         info = release["plugin"]
         plugin = by_id.get(info["guid"])
         if plugin is None:
-            plugin = {key: info[key] for key in ("guid", "name", "description", "overview", "owner", "category")}
+            plugin = {key: info[key] for key in sorted((PLUGIN_FIELDS - {"versions"}) | ({"imageUrl"} & info.keys()))}
             plugin["versions"] = []
             merged.append(plugin)
             by_id[info["guid"]] = plugin
