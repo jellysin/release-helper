@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/jellysin/release-helper/compare/v1.1.0...v1.2.0) (2026-10-11)
+
+
+### Features
+
+* add server-check, which asks a real Jellyfin server whether it offers every entry ([#32](https://github.com/jellysin/release-helper/issues/32)) ([0c3db8f](https://github.com/jellysin/release-helper/commit/0c3db8f8a043f18f02905d3907c29491cbb89ac7))
+
 ## [1.1.0](https://github.com/jellysin/release-helper/compare/v1.0.3...v1.1.0) (2026-10-11)
 
 
