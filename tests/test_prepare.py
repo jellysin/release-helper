@@ -53,6 +53,8 @@ class Remote:
         self.payloads = []
         self.refused = set()
         self.lost = set()
+        self.lagging = False
+        self.answer = {}
 
     def api(self, path):
         self.reads += 1
@@ -66,7 +68,7 @@ class Remote:
         if kind == "git/ref/tags":
             return {"object": {"type": "commit", "sha": self.tags[name]}}
         assert path == f"{RELEASES}?per_page=100&page=1", path
-        return list(self.releases)
+        return [] if self.lagging else list(self.releases)
 
     def run(self, arguments):
         endpoint = arguments[4]
@@ -83,6 +85,7 @@ class Remote:
         payload = json.loads(Path(arguments[6]).read_text(encoding="utf-8"))
         self.payloads.append(payload)
         self.releases.append(release(len(self.releases) + 1, payload["tag_name"]))
+        return json.dumps({**self.releases[-1], **self.answer})
 
     def endpoints(self):
         return [arguments[4] for arguments in self.writes]
@@ -139,7 +142,7 @@ class PreparationTests(PrepareCase):
             tag_write,
         )
         self.assertEqual(["gh", "api", "--method", "POST", RELEASES, "--input"], draft_write[:6])
-        self.assertEqual(["--silent"], draft_write[7:])
+        self.assertEqual(7, len(draft_write), "the answer of the write is read, not silenced")
         self.assertFalse(Path(draft_write[6]).exists(), "request file outlives the call")
         expected = {"tag_name": TAG, "name": TAG, "draft": True, "prerelease": False, "body": SECTION}
         self.assertEqual([expected], remote.payloads)
@@ -237,13 +240,48 @@ class ConflictTests(PrepareCase):
                 with self.assertRaisesRegex(ValidationError, message):
                     self.prepare(remote)
 
+    def test_created_draft_is_read_from_the_answer_of_the_write_not_from_a_lagging_listing(self):
+        # Measured on run 38149612374: the listing did not show the draft one second after its creation.
+        remote = Remote()
+        remote.lagging = True
+        self.assertEqual(release(), self.prepare(remote))
+        self.assertEqual(([REFS, RELEASES], [release()]), (remote.endpoints(), remote.releases))
+
+    def test_answer_of_the_write_must_be_the_unpublished_draft_of_this_tag(self):
+        cases = [
+            ({"draft": False}, "Created release is not a draft"),
+            ({"immutable": True}, "Created release is not a draft"),
+            ({"tag_name": "v1.2.4"}, "Release tag changed"),
+            ({"id": 0}, "Invalid GitHub release ID"),
+            ({"prerelease": True}, "Unexpected release state"),
+            ({"url": f"https://api.github.com/repos/{FIRST['repository']}-fork/releases/1"}, "repository identity"),
+        ]
+        for answer, message in cases:
+            with self.subTest(answer=answer):
+                remote = Remote()
+                remote.answer = answer
+                with self.assertRaisesRegex(ValidationError, message):
+                    self.prepare(remote)
+
+    def test_answer_that_is_no_release_object_is_refused(self):
+        def answering(remote, answer, arguments):
+            remote.run(arguments)
+            return answer
+
+        for answer in ("[]", "{", '"text"'):
+            with self.subTest(answer=answer):
+                remote = Remote()
+                with self.assertRaises(ValidationError):
+                    prepare.prepare(remote, REPO, TAG, COMMIT, runner=partial(answering, remote, answer))
+
     def test_read_back_refuses_a_tag_that_another_writer_moved(self):
         remote = Remote()
         create = remote.run
 
         def raced(arguments):
-            create(arguments)
+            answer = create(arguments)
             remote.tags[TAG] = OTHER
+            return answer
 
         with self.assertRaisesRegex(ValidationError, "Remote tag differs after"):
             prepare.prepare(remote, REPO, TAG, COMMIT, runner=raced)

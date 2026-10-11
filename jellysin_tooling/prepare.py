@@ -5,9 +5,9 @@ import tempfile
 from pathlib import Path
 
 from . import changelog
-from .common import MAX_BODY, SHA, filename, json_bytes, release_notes, repository, require, semver
+from .common import MAX_BODY, SHA, decode_json, filename, json_bytes, release_notes, repository, require, semver
 from .github import command
-from .release import matching_releases, remote_tag
+from .release import matching_releases, release_identity, remote_tag
 
 WORKFLOW = ".github/workflows/prepare-release.yml"
 # The listing documents no page size; a full default page may hide the exact tag behind longer names.
@@ -73,13 +73,19 @@ def unpublished(client, repo, tag):
 
 
 def create_draft(repo, tag, body, runner):
+    """Create the draft and return it as the write itself answered; the release listing may lag behind."""
     # No target_commitish: the tag exists by now, and the built-in token is refused for a named
     # commit whose workflow files differ from the default branch.
     payload = {"tag_name": tag, "name": tag, "draft": True, "prerelease": False, "body": body}
     with tempfile.TemporaryDirectory(prefix="jellysin-prepare-") as temporary:
         path = Path(temporary) / "release.json"
         path.write_bytes(json_bytes(payload))
-        runner(["gh", "api", "--method", "POST", f"repos/{repo}/releases", "--input", str(path), "--silent"])
+        answer = runner(["gh", "api", "--method", "POST", f"repos/{repo}/releases", "--input", str(path)])
+    require(isinstance(answer, str) and bool(answer), "Draft release is absent after preparation")
+    created = decode_json(answer.encode())
+    release_identity(created, repo, tag)
+    require(created["draft"] is True and created.get("immutable") is not True, "Created release is not a draft")
+    return created
 
 
 def prepare(client, repo, tag, commit, version_path="version.txt", changelog_path=None, runner=command):
@@ -95,8 +101,6 @@ def prepare(client, repo, tag, commit, version_path="version.txt", changelog_pat
         reference = ["--raw-field", f"ref=refs/tags/{tag}", "--raw-field", f"sha={commit}"]
         runner(["gh", "api", "--method", "POST", f"repos/{repo}/git/refs", *reference, "--silent"])
     if draft is None:
-        create_draft(repo, tag, body, runner)
+        draft = create_draft(repo, tag, body, runner)
     require(tagged_commit(client, repo, tag) == commit, "Remote tag differs after preparation")
-    draft = unpublished(client, repo, tag)
-    require(draft is not None, "Draft release is absent after preparation")
     return draft
