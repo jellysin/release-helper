@@ -68,6 +68,16 @@ published or immutable release with the tag, or the tag on another commit, is a
 conflict that needs a new version. Every write of the command has a test that proves
 the refusal happens first; a new write needs the same proof.
 
+This repository releases itself with these steps. Merging its release PR changes
+files only. A maintainer then dispatches `prepare-release.yml` on `main` with the tag
+and the merged release commit; the run uses the action of that checkout and leaves
+the tag and a draft whose text is the version's changelog section. Publishing that
+draft is the maintainer's own act: read the draft, set `draft` to false on its numeric
+release ID, and read back that the release is published and immutable. The publisher
+does not apply here, since the helper ships no plugin artifacts. Tags `v1.0.0` to
+`v1.0.3` mark the commits that recorded those versions; no release was published for
+them.
+
 When publication is authorized, the publisher requires `release.yml` to run **on
 the exact tag ref** with an existing draft. Checking out a tag from a main-triggered
 workflow does not change the OIDC source identity. Publication validates the exact

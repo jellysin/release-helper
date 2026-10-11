@@ -1,0 +1,36 @@
+name: Prepare release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, v followed by the version the release commit records.
+        required: true
+        type: string
+      commit:
+        description: Full SHA of the merged release commit on main.
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    name: Tag and draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create the tag and one unpublished draft with this checkout's own command
+        uses: ./actions/prepare
+        with:
+          tag: ${{ inputs.tag }}
+          commit: ${{ inputs.commit }}
+          token: ${{ github.token }}
+          changelog-path: CHANGELOG.md

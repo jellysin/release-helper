@@ -183,6 +183,9 @@ the built-in token a named target whose workflow files differ from the default b
 When GitHub refuses the tag creation itself, a maintainer pushes the tag to the
 approved commit and runs the command again; it then only adds the draft.
 
+This repository prepares its own releases with the same workflow file and the action
+from its own checkout; CONTRIBUTING.md describes the steps.
+
 ## Plugin repository trust and recovery
 
 Only allowlisted public releases are accepted. Every new artifact needs valid
