@@ -58,7 +58,7 @@ class SpdxTests(Workspace):
             self.assertEqual(1, len(document["files"]))
             self.assertFalse(document["packages"][1]["filesAnalyzed"])
             self.assertEqual(
-                "pkg:nuget/Host.API@12.0.0", document["packages"][1]["externalRefs"][0]["referenceLocator"]
+                "pkg:nuget/Jellyfin.Controller@12.0.0", document["packages"][1]["externalRefs"][0]["referenceLocator"]
             )
             self.assertTrue(
                 any(edge["relationshipType"] == "RUNTIME_DEPENDENCY_OF" for edge in document["relationships"])

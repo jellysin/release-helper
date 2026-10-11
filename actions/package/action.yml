@@ -28,6 +28,9 @@ inputs:
   global-json-path:
     description: Exact .NET SDK pin used for the dependency inventory.
     default: global.json
+  changelog-path:
+    description: Release-please changelog; the section of the packaged version becomes the catalog changelog.
+    default: ''
 outputs:
   archive:
     description: Absolute path to the plugin ZIP.
@@ -54,6 +57,7 @@ runs:
         NUGET_ASSETS_PATH: ${{ inputs.nuget-assets-path }}
         RUNTIME_DEPENDENCIES_PATH: ${{ inputs.runtime-dependencies-path }}
         GLOBAL_JSON_PATH: ${{ inputs.global-json-path }}
+        CHANGELOG_PATH: ${{ inputs.changelog-path }}
       run: |
         args=(package --publish-directory "$PUBLISH_DIRECTORY" --metadata-path "$METADATA_PATH" --version-path "$VERSION_PATH" --output-directory "$OUTPUT_DIRECTORY")
         if [[ -n "$RELEASE_TAG" ]]; then args+=(--tag "$RELEASE_TAG"); fi
@@ -61,4 +65,5 @@ runs:
         if [[ -n "$NUGET_ASSETS_PATH" ]]; then args+=(--nuget-assets-path "$NUGET_ASSETS_PATH"); fi
         if [[ -n "$RUNTIME_DEPENDENCIES_PATH" ]]; then args+=(--runtime-dependencies-path "$RUNTIME_DEPENDENCIES_PATH"); fi
         args+=(--global-json-path "$GLOBAL_JSON_PATH")
+        if [[ -n "$CHANGELOG_PATH" ]]; then args+=(--changelog-path "$CHANGELOG_PATH"); fi
         python "$TOOL_ROOT/tools.py" "${args[@]}"

@@ -39,6 +39,13 @@ keeps that compatibility range rather than pinning it to a single Python patch.
 Exact CI interpreter and dependency updates remain enabled and require PR review.
 Raise the supported minimum deliberately when production code requires it.
 
+`JELLYFIN_ABI_MAJOR` in `jellysin_tooling/common.py` is the only place that names the
+supported Jellyfin major. A new major changes that constant, the fixtures and the
+documentation in one pull request; no validator carries its own copy. The floor rule
+(server references equal to the release in `targetAbi`) has one implementation,
+`inventory.require_floor`; a plugin that needs a looser rule asks for a named option
+of that check and keeps no private variant.
+
 ## Release contract
 
 Release-please collects conventional commits in release PRs and maintains proposed

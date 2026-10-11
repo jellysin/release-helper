@@ -5,8 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-from . import catalog, inventory, package, policy, release
-from .common import ValidationError, read_json, require
+from . import catalog, changelog, inventory, package, policy, release
+from .common import ValidationError, metadata, read_json, require
 from .github import GitHub, command
 
 
@@ -23,6 +23,7 @@ def parser():
     build.add_argument("--nuget-assets-path")
     build.add_argument("--runtime-dependencies-path")
     build.add_argument("--global-json-path", default="global.json")
+    build.add_argument("--changelog-path")
     publish = commands.add_parser("publish")
     publish.add_argument("--directory", default="dist")
     publish.add_argument("--repo", required=True)
@@ -40,34 +41,49 @@ def parser():
     return root
 
 
+def release_changelog(arguments, version, repo):
+    if not arguments.changelog_path:
+        return None
+    notes = changelog.notes(arguments.changelog_path, version, repo)
+    # An untagged packaging check may run before the release pull request writes the section.
+    require(notes is not None or not arguments.tag, "Changelog has no section for the tagged version")
+    return notes
+
+
+def run_package(arguments):
+    commit = release.exact_tag(arguments.tag) if arguments.tag else command(["git", "rev-parse", "HEAD"])
+    created = command(["git", "show", "-s", "--format=%cI", commit])
+    version = Path(arguments.version_path).read_text(encoding="utf-8").strip()
+    require(not arguments.tag or arguments.tag == "v" + version, "Tag does not match version.txt")
+    inventory_paths = (arguments.nuget_lock_path, arguments.nuget_assets_path, arguments.runtime_dependencies_path)
+    require(all(inventory_paths) or not any(inventory_paths), "Provide all three dependency inventory inputs")
+    dependencies = (
+        inventory.from_restore(*inventory_paths, arguments.global_json_path) if all(inventory_paths) else None
+    )
+    info = metadata(read_json(arguments.metadata_path))
+    result = package.build(
+        arguments.publish_directory,
+        info,
+        version,
+        commit,
+        created,
+        arguments.output_directory,
+        dependencies,
+        release_changelog(arguments, version, info["repository"]),
+    )
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with Path(output).open("a", encoding="utf-8") as stream:
+            stream.write(f"archive={Path(arguments.output_directory).resolve() / result['archive']['name']}\n")
+            stream.write(f"directory={Path(arguments.output_directory).resolve()}\n")
+
+
 def run(arguments):
     if arguments.command == "check-policy":
         policy.check_repository(arguments.directory)
         return
     if arguments.command == "package":
-        commit = release.exact_tag(arguments.tag) if arguments.tag else command(["git", "rev-parse", "HEAD"])
-        created = command(["git", "show", "-s", "--format=%cI", commit])
-        version = Path(arguments.version_path).read_text(encoding="utf-8").strip()
-        require(not arguments.tag or arguments.tag == "v" + version, "Tag does not match version.txt")
-        inventory_paths = (arguments.nuget_lock_path, arguments.nuget_assets_path, arguments.runtime_dependencies_path)
-        require(all(inventory_paths) or not any(inventory_paths), "Provide all three dependency inventory inputs")
-        dependencies = (
-            inventory.from_restore(*inventory_paths, arguments.global_json_path) if all(inventory_paths) else None
-        )
-        result = package.build(
-            arguments.publish_directory,
-            read_json(arguments.metadata_path),
-            version,
-            commit,
-            created,
-            arguments.output_directory,
-            dependencies,
-        )
-        output = os.environ.get("GITHUB_OUTPUT")
-        if output:
-            with Path(output).open("a", encoding="utf-8") as stream:
-                stream.write(f"archive={Path(arguments.output_directory).resolve() / result['archive']['name']}\n")
-                stream.write(f"directory={Path(arguments.output_directory).resolve()}\n")
+        run_package(arguments)
         return
     if arguments.command == "publish":
         release.publish(

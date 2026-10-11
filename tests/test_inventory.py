@@ -16,10 +16,10 @@ class InventoryTests(Workspace):
         result = from_restore(*paths)
         self.assertEqual("net10.0", result["targetFramework"])
         self.assertEqual("10.0.400", result["sdkVersion"])
-        self.assertEqual(["Host.API", "Host.Data"], [entry["id"] for entry in result["packages"]])
+        self.assertEqual(["Jellyfin.Controller", "Jellyfin.Data"], [entry["id"] for entry in result["packages"]])
         self.assertTrue(result["packages"][0]["hostProvided"])
         self.assertFalse(result["packages"][1]["hostProvided"])
-        self.assertEqual(["Host.Data"], result["packages"][0]["dependencies"])
+        self.assertEqual(["Jellyfin.Data"], result["packages"][0]["dependencies"])
         self.assertEqual((b"a" * 64).hex(), result["packages"][0]["sha512"])
 
     def test_checkout_paths_and_lock_line_endings_do_not_change_inventory(self):
@@ -35,15 +35,19 @@ class InventoryTests(Workspace):
             paths, documents = restore_files(self.root)
             assets = documents[1]
             if mutation == "version":
-                assets["targets"]["net10.0"]["Host.API/13.0.0"] = assets["targets"]["net10.0"].pop("Host.API/12.0.0")
+                assets["targets"]["net10.0"]["Jellyfin.Controller/13.0.0"] = assets["targets"]["net10.0"].pop(
+                    "Jellyfin.Controller/12.0.0"
+                )
             elif mutation == "hash":
-                assets["libraries"]["Host.API/12.0.0"]["sha512"] = assets["libraries"]["Host.Data/12.0.0"]["sha512"]
+                assets["libraries"]["Jellyfin.Controller/12.0.0"]["sha512"] = assets["libraries"][
+                    "Jellyfin.Data/12.0.0"
+                ]["sha512"]
             elif mutation == "edges":
-                assets["targets"]["net10.0"]["Host.API/12.0.0"]["dependencies"] = {}
+                assets["targets"]["net10.0"]["Jellyfin.Controller/12.0.0"]["dependencies"] = {}
             elif mutation == "absent":
-                del assets["libraries"]["Host.API/12.0.0"]
+                del assets["libraries"]["Jellyfin.Controller/12.0.0"]
             else:
-                assets["targets"]["net10.0"]["Host.API/12.0.0"]["type"] = "project"
+                assets["targets"]["net10.0"]["Jellyfin.Controller/12.0.0"]["type"] = "project"
             paths[1].write_bytes(json_bytes(assets))
             with self.subTest(mutation=mutation), self.assertRaises(ValidationError):
                 from_restore(*paths)

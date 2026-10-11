@@ -35,9 +35,28 @@ build outputs. The descriptor records `guid`, `name`, `description`, `overview`,
 `packageFiles` names additional plugin-owned files explicitly. Paths are flat,
 unique and bounded; host-provided assembly names are rejected.
 
+`targetAbi` is the floor: the oldest Jellyfin server the plugin supports, written
+`12.x.y.0`. The supported major is one constant, `JELLYFIN_ABI_MAJOR` in
+`jellysin_tooling/common.py`; descriptor and plugin repository validation both read it.
+
+Optional `imageUrl` names the image Jellyfin shows for the plugin. Accepted form:
+`https://raw.githubusercontent.com/<repository>/<40-hex commit>/<path>` inside the
+plugin's own repository, ending in `.png`, `.jpg`, `.jpeg` or `.webp`. Branch names,
+other hosts and other repositories are rejected. The plugin repository copies the
+value when it first lists the plugin and checks it against the release source.
+
 ```sh
 python tools.py package --publish-directory artifacts/plugin --tag v1.0.0
 ```
+
+`--changelog-path CHANGELOG.md` adds the release notes: the section of the packaged
+version in a release-please changelog becomes `release.json.changelog` and, after
+import, the `changelog` text Jellyfin renders as Markdown. Notes are at most 4096
+characters of text without control characters; a longer section is cut at a line
+end and closes with a link to the release page. The result depends on the file
+contents only. A tagged package fails when the section is absent; an untagged check
+omits the field. Without the option the plugin repository entry links the release
+page, as every earlier entry does. Listed entries never change.
 
 Output: plugin ZIP, `release.json`, `checksums.txt` (SHA-256), and an SPDX 2.3
 inventory. MD5 serves Jellyfin's plugin repository format. SPDX's required SHA-1 file
@@ -73,6 +92,16 @@ resolved versions, SHA-512 package hashes and dependency edges must agree. Perfo
 No package scripts or assemblies are executed. NuGet assets formats 3 and 4 are
 supported, with at most 512 packages per inventory.
 
+Server packages stay at the floor. Every host-provided `Jellyfin.*` package must have
+exactly the `x.y.z` version that `targetAbi` names, and `Jellyfin.Controller` must be
+among them. A reference above the floor is disabled as incompatible by the floor
+server; a floor above the reference claims a server release that no build was compiled
+against. A direct `Jellyfin.*` reference in the production lock must be declared in
+the runtime list, so that it cannot escape the comparison. `package` refuses a
+mismatch before it writes an artifact, and the plugin repository refuses a release
+whose metadata carries one. Raising the floor changes `targetAbi`, the references and
+the lock in one pull request.
+
 The SBOM lists every locked production package as a build dependency, with NuGet
 PURLs and archive hashes. Declared host packages also have runtime relationships;
 their DLLs are not included. It records the SDK pin and a SHA-256 fingerprint of
@@ -97,8 +126,8 @@ with a 60-second timeout per dispatch. It exposes no publication inputs or tag
 output and never dispatches a publication workflow.
 
 The package action accepts `publish-directory`, `metadata-path`, `version-path`,
-`output-directory`, optional exact `tag` and the dependency inputs above; it outputs
-`archive` and `directory`.
+`output-directory`, optional exact `tag`, optional `changelog-path` and the dependency
+inputs above; it outputs `archive` and `directory`.
 For a separately authorized publication, attest **all four artifacts** using
 `actions/attest` in the plugin's tag-dispatched
 `.github/workflows/release.yml`, then call `actions/publish` with `directory`, `tag`

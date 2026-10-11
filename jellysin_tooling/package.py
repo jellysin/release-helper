@@ -6,7 +6,19 @@ from pathlib import Path
 
 from . import inventory as dependency_inventory
 from . import spdx
-from .common import MAX_ASSET, SHA, atomic_write, digest, json_bytes, metadata, require, semver, timestamp
+from .common import (
+    MAX_ASSET,
+    SHA,
+    atomic_write,
+    digest,
+    json_bytes,
+    metadata,
+    release_notes,
+    require,
+    semver,
+    target_abi,
+    timestamp,
+)
 
 
 def package_files(publish_directory, info):
@@ -38,8 +50,11 @@ def archive_bytes(files):
     return buffer.getvalue()
 
 
-def build(publish_directory, info, version, commit, created, output_directory, inventory=None):
+def build(publish_directory, info, version, commit, created, output_directory, inventory=None, notes=None):
     info = metadata(info)
+    if inventory is not None:
+        inventory = dependency_inventory.validate(inventory)
+        dependency_inventory.require_floor(inventory, target_abi(info["targetAbi"]))
     version = semver(version)
     require(isinstance(commit, str) and SHA.fullmatch(commit), "Expected full lowercase commit SHA")
     created = timestamp(created)
@@ -63,7 +78,9 @@ def build(publish_directory, info, version, commit, created, output_directory, i
         },
     }
     if inventory is not None:
-        release["dependencyInventory"] = dependency_inventory.validate(inventory)
+        release["dependencyInventory"] = inventory
+    if notes is not None:
+        release["changelog"] = release_notes(notes)
     artifacts = {
         name: archive,
         "release.json": json_bytes(release),
