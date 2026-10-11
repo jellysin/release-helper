@@ -14,6 +14,59 @@ jobs:
       pull-requests: write
       actions: write
     steps:
+      # release-please aborts while a merged release PR still carries "autorelease: pending", and
+      # with skip-github-release nothing moves that label. This step moves it once the version tag
+      # names the PR's merge commit; without that tag the label stays and the abort is correct.
+      - name: Mark merged release PRs whose tag names their merge commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from urllib.parse import quote
+          REPO = os.environ['GITHUB_REPOSITORY']
+          PENDING, TAGGED = 'autorelease: pending', 'autorelease: tagged'
+          TITLE = re.compile(r'chore\(main\): release (\d+\.\d+\.\d+)')
+          SHA = re.compile(r'[0-9a-f]{40}')
+          def gh(*arguments):
+              # Captured and never echoed: the body of a refused request stays out of the log.
+              done = subprocess.run(['gh', 'api', *arguments], capture_output=True, check=False, timeout=60)
+              if done.returncode or len(done.stdout) > 1_000_000:
+                  raise SystemExit('Release label request failed')
+              return json.loads(done.stdout) if done.stdout.strip() else None
+          def tagged_commit(tag):
+              refs = gh(f'repos/{REPO}/git/matching-refs/tags/{tag}')
+              if not isinstance(refs, list) or len(refs) >= 30:
+                  raise SystemExit('Unexpected tag listing')
+              target = next((ref['object'] for ref in refs if ref['ref'] == 'refs/tags/' + tag), {})
+              if target.get('type') == 'tag':
+                  target = gh(f"repos/{REPO}/git/tags/{target['sha']}")['object']
+              return target['sha'] if target.get('type') == 'commit' else None
+          def version_tag(pull):
+              title = TITLE.fullmatch(pull['title'])
+              ours = pull['head']['ref'].startswith('release-please--branches--main') and pull['base']['ref'] == 'main'
+              merged = pull['merged'] is True and SHA.fullmatch(pull['merge_commit_sha'] or '')
+              return 'v' + title[1] if title and ours and merged else None
+          pending = gh(f'repos/{REPO}/issues?state=closed&labels={quote(PENDING)}&per_page=20')
+          if not isinstance(pending, list) or len(pending) >= 20:
+              raise SystemExit('Unexpected pending release PR listing')
+          numbers = [issue['number'] for issue in pending if 'pull_request' in issue]
+          if any(type(number) is not int for number in numbers):
+              raise SystemExit('Unexpected pending release PR listing')
+          for number in numbers:
+              pull = gh(f'repos/{REPO}/pulls/{number}')
+              tag = version_tag(pull)
+              if tag is None or tagged_commit(tag) != pull['merge_commit_sha']:
+                  print(f'#{number}: label stays, no version tag names its merge commit')
+                  continue
+              # Add first: a failure between the two writes leaves the PR pending for the next run.
+              gh('--method', 'POST', f'repos/{REPO}/issues/{number}/labels', '--raw-field', f'labels[]={TAGGED}')
+              gh('--method', 'DELETE', f'repos/{REPO}/issues/{number}/labels/{quote(PENDING)}')
+              print(f'#{number}: {tag} names its merge commit, marked tagged')
+          PY
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:

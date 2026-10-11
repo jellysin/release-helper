@@ -61,6 +61,13 @@ can open or update a release PR; it cannot create a tag, draft or published rele
 Merging the release PR updates version files and changelogs without publication.
 The reusable workflow has no publication inputs or tag output.
 
+A merged release PR keeps its `autorelease: pending` label until its version tag
+exists, and release-please opens no further release PR while it does. The first step
+of the reusable workflow moves the label to `autorelease: tagged` when the tag
+`v<version>` names the PR's merge commit; never move it by hand for a tag that sits
+elsewhere. The step's program is tested from the workflow file itself
+(`tests/test_release_pr_workflow.py`); a change to it needs the case it refuses.
+
 Publication is a separate, explicitly authorized operation. Tags use stable
 three-part SemVer. Consumers pin Actions or reusable workflows to a full commit SHA
 and annotate released versions for Renovate. The shared PR workflow does not
@@ -69,7 +76,9 @@ create those tags or dispatch publication workflows.
 Preparation is the step between: `prepare`, dispatched manually from
 `prepare-release.yml` on `main`, creates the exact tag on an approved main commit and
 one unpublished draft. It checks tag, commit, version file and remote state before the
-first write, creates only what is missing, and leaves an existing draft untouched. A
+first write, creates only what is missing, and leaves an existing draft untouched. It
+takes the created draft from the answer of its own write, since the release listing can
+lag behind a creation by seconds. A
 published or immutable release with the tag, or the tag on another commit, is a
 conflict that needs a new version. Every write of the command has a test that proves
 the refusal happens first; a new write needs the same proof.

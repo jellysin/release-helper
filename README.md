@@ -16,9 +16,9 @@ integrity, and the debt ratchet.
 generated agent context against `AGENTS.md`.
 
 **Debt Baseline**: `.standards-baseline.json` anchors the debt ratchet at
-1 recorded infraction; audit forbids growth.
+0 recorded infractions; audit forbids growth.
 
-[praetor-hiss-badge]: https://img.shields.io/badge/Standards-HISS%20Adopted%20(1%20baselined)-yellow
+[praetor-hiss-badge]: https://img.shields.io/badge/Standards-HISS%20Adopted-blue
 [praetor-hiss-agents]: https://github.com/jellysin/release-helper/blob/HEAD/AGENTS.md
 <!-- praetor:readme-governance:end -->
 
@@ -124,6 +124,14 @@ GitHub drafts or published releases. Merging a release PR updates files only.
 It explicitly dispatches the caller's `ci.yml` for at most 20 returned release PRs,
 with a 60-second timeout per dispatch. It exposes no publication inputs or tag
 output and never dispatches a publication workflow.
+
+Release-please stops while a merged release PR still carries `autorelease: pending`,
+and with `skip-github-release` nothing moves that label. The workflow's first step
+therefore marks a merged release PR `autorelease: tagged` once the tag `v<version>`
+from its title names its merge commit. A tag that is absent or names another commit
+leaves the label, and release-please stops until the release is prepared. The step
+reads at most 19 pending PRs (a full page of 20 fails), allows 60 seconds per request
+and adds the new label before it removes the old one.
 
 The package action accepts `publish-directory`, `metadata-path`, `version-path`,
 `output-directory`, optional exact `tag`, optional `changelog-path` and the dependency
