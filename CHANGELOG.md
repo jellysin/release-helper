@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/jellysin/release-helper/compare/v1.2.0...v1.2.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* mark a merged release PR as tagged when its version tag names the merge commit ([#34](https://github.com/jellysin/release-helper/issues/34)) ([5d0d276](https://github.com/jellysin/release-helper/commit/5d0d2768e7b66ffa984fd067ea8c8c9ffb685ced))
+* **prepare:** take the created draft from the answer of its own write ([5d0d276](https://github.com/jellysin/release-helper/commit/5d0d2768e7b66ffa984fd067ea8c8c9ffb685ced))
+
 ## [1.2.0](https://github.com/jellysin/release-helper/compare/v1.1.0...v1.2.0) (2026-10-11)
 
 
