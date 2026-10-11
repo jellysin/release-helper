@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import catalog, changelog, inventory, package, policy, release
+from . import catalog, changelog, inventory, package, policy, prepare, release
 from .common import ValidationError, metadata, read_json, require
 from .github import GitHub, command
 
@@ -30,6 +30,12 @@ def parser():
     publish.add_argument("--tag", required=True)
     publish.add_argument("--workflow", default=".github/workflows/release.yml")
     publish.add_argument("--verified-tag-recovery", action="store_true")
+    draft = commands.add_parser("prepare")
+    draft.add_argument("--repo", required=True)
+    draft.add_argument("--tag", required=True)
+    draft.add_argument("--commit", required=True)
+    draft.add_argument("--version-path", default="version.txt")
+    draft.add_argument("--changelog-path")
     update = commands.add_parser("catalog")
     update.add_argument("--manifest", default="manifest.json")
     update.add_argument("--allowlist", default="plugins.json")
@@ -84,6 +90,16 @@ def run(arguments):
         return
     if arguments.command == "package":
         run_package(arguments)
+        return
+    if arguments.command == "prepare":
+        prepare.prepare(
+            GitHub(),
+            arguments.repo,
+            arguments.tag,
+            arguments.commit,
+            arguments.version_path,
+            arguments.changelog_path,
+        )
         return
     if arguments.command == "publish":
         release.publish(

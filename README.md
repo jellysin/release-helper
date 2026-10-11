@@ -113,8 +113,8 @@ dependency tree and frontend development tools are outside this production graph
 
 ## GitHub Actions
 
-Consume `actions/package`, `actions/publish`, or `actions/catalog` at a reviewed
-full commit SHA. Actions use their own downloaded directory; callers do not copy
+Consume `actions/package`, `actions/prepare`, `actions/publish`, or `actions/catalog`
+at a reviewed full commit SHA. Actions use their own downloaded directory; callers do not copy
 scripts or check out a mutable tooling branch.
 
 The reusable `.github/workflows/release-please.yml` collects conventional commits
@@ -132,12 +132,56 @@ For a separately authorized publication, attest **all four artifacts** using
 `actions/attest` in the plugin's tag-dispatched
 `.github/workflows/release.yml`, then call `actions/publish` with `directory`, `tag`
 and the built-in `token`. An existing draft and the exact tag are prerequisites;
-release PR preparation creates neither. GitHub currently requires maintainer approval of
+release PR preparation creates neither, `actions/prepare` creates both. GitHub currently requires maintainer approval of
 `GITHUB_TOKEN`-created PR workflows, including later updates; dispatching CI does
 not clear that separate approval gate. This is the documented
 [June 11, 2026 GitHub behavior](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/).
 Maintainers approve the actual PR workflow after reviewing the current changes.
 The automation retains only the built-in token; unattended PR merging is not promised.
+
+## Release preparation
+
+`prepare` creates the two prerequisites of publication, the exact tag and one
+unpublished draft. It never publishes, and it never moves, edits or deletes anything.
+
+```sh
+python tools.py prepare --repo jellysin/plugin-lastfm --tag v1.0.0 --commit <full SHA>
+```
+
+The commit must be an ancestor of fetched `origin/main`. Its version file
+(`--version-path`, default `version.txt`) is read from the commit itself, not from
+the checkout, and must record the version in the tag. `--changelog-path CHANGELOG.md`
+takes the draft text from that version's section of the changelog at the same commit:
+plain text of at most 65,536 characters; a missing or longer section stops the command.
+
+The command reads the remote state before its first write and refuses a conflict:
+
+- a published, immutable or prerelease release that carries the tag;
+- more than one draft for the tag;
+- the tag on another commit;
+- a tag listing that is malformed or fills a page, since the exact tag may then be hidden.
+
+It then creates only what is missing, the tag first and the draft second, and reads
+both back. A matching tag and draft need no write, so a repeated run changes nothing
+and an existing draft keeps its text. After a failure, run the same command again:
+a tag without a draft, or a draft without a tag, is completed.
+
+Recipe for a plugin repository:
+
+1. Add `.github/workflows/prepare-release.yml` with `workflow_dispatch` inputs `tag`
+   and `commit`. In Actions the command accepts this workflow file only, dispatched
+   manually on `main`, and a commit that is an ancestor of the workflow's own commit.
+2. Give the job `contents: write` and check out with `fetch-depth: 0`.
+3. Call `actions/prepare` with `tag`, `commit` and the built-in `token`; add
+   `changelog-path` for release notes in the draft.
+4. Dispatch `release.yml` on the new tag ref. A tag created with the built-in token
+   starts no workflow by itself.
+
+The draft request names no target commit: the tag exists by then, and GitHub refuses
+the built-in token a named target whose workflow files differ from the default branch
+([create a release](https://docs.github.com/en/rest/releases/releases#create-a-release)).
+When GitHub refuses the tag creation itself, a maintainer pushes the tag to the
+approved commit and runs the command again; it then only adds the draft.
 
 ## Plugin repository trust and recovery
 

@@ -60,6 +60,14 @@ three-part SemVer. Consumers pin Actions or reusable workflows to a full commit 
 and annotate released versions for Renovate. The shared PR workflow does not
 create those tags or dispatch publication workflows.
 
+Preparation is the step between: `prepare`, dispatched manually from
+`prepare-release.yml` on `main`, creates the exact tag on an approved main commit and
+one unpublished draft. It checks tag, commit, version file and remote state before the
+first write, creates only what is missing, and leaves an existing draft untouched. A
+published or immutable release with the tag, or the tag on another commit, is a
+conflict that needs a new version. Every write of the command has a test that proves
+the refusal happens first; a new write needs the same proof.
+
 When publication is authorized, the publisher requires `release.yml` to run **on
 the exact tag ref** with an existing draft. Checking out a tag from a main-triggered
 workflow does not change the OIDC source identity. Publication validates the exact

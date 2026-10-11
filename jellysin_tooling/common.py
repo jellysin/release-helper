@@ -14,6 +14,7 @@ MAX_ASSET = 64 * 1024 * 1024
 MAX_FILES = 32
 MAX_RELEASES = 1000
 MAX_NOTES = 4096
+MAX_BODY = 65536
 # The one place that names the supported Jellyfin major; both ABI validators read it.
 JELLYFIN_ABI_MAJOR = 12
 REPOSITORY = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}")
@@ -61,8 +62,8 @@ def target_abi(value):
     return match.group(1)
 
 
-def release_notes(value):
-    require(isinstance(value, str) and 0 < len(value) <= MAX_NOTES, "Invalid release notes")
+def release_notes(value, limit=MAX_NOTES):
+    require(isinstance(value, str) and 0 < len(value) <= limit, "Invalid release notes")
     require(value == value.strip(), "Release notes carry surrounding whitespace")
     unsafe = (char != "\n" and ord(char) < 32 or char == "\x7f" or char in DIRECTION_CONTROLS for char in value)
     require(not any(unsafe), "Control character in release notes")

@@ -46,7 +46,8 @@ def release_identity(remote, repo, tag, release_id=None):
     return identity
 
 
-def find_release(client, repo, tag):
+def matching_releases(client, repo, tag):
+    """Return the releases, draft or published, that carry the exact tag: none or one."""
     require(isinstance(client.token, str) and bool(client.token.strip()), "Authenticated release lookup is required")
     matches = []
     for page in range(1, 11):
@@ -61,9 +62,14 @@ def find_release(client, repo, tag):
                 matches.append(remote)
                 require(len(matches) <= 1, "Multiple releases match the exact tag")
         if len(releases) < 100:
-            require(len(matches) == 1, "No visible release matches the exact tag")
-            return matches[0]
+            return matches
     raise ValueError("Release history exceeds 1000-entry scan limit")
+
+
+def find_release(client, repo, tag):
+    matches = matching_releases(client, repo, tag)
+    require(len(matches) == 1, "No visible release matches the exact tag")
+    return matches[0]
 
 
 def read_release(client, repo, tag, release_id):
