@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "generated_at": "2026-10-11T13:27:19Z",
+  "repository": "jellysin/release-helper",
+  "commit_sha": "d5648b9961c30f92c520a9f721272fda8fe65892",
+  "total_infractions": 1,
+  "infractions": [
+    {
+      "rule_id": "HISS-08",
+      "file_path": "tests/test_release_pr_workflow.py",
+      "line_number": 30,
+      "message": "Banned dynamic eval/exec execution in Python",
+      "anchor": "fn:ReleasePrWorkflowTests.execute",
+      "fingerprint": "tests/test_release_pr_workflow.py:HISS-08:fn:ReleasePrWorkflowTests.execute#1"
+    }
+  ]
+}
