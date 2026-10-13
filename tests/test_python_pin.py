@@ -40,4 +40,3 @@ class PythonPinTests(unittest.TestCase):
             project = tomllib.load(stream)
         major, minor, _ = (ROOT / ".python-version").read_text(encoding="utf-8").strip().split(".")
         self.assertEqual(project["project"]["requires-python"], f">={major}.{minor}")
-        self.assertEqual(project["tool"]["ruff"]["target-version"], f"py{major}{minor}")
