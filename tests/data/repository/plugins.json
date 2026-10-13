@@ -1,0 +1,10 @@
+{
+  "plugins": [
+    {
+      "guid": "2034650d-a290-4a16-b195-89fb44cfb932",
+      "repository": "jellysin/plugin-lastfm",
+      "signerWorkflow": ".github/workflows/release.yml"
+    }
+  ],
+  "schemaVersion": 1
+}

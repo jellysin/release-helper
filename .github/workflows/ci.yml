@@ -30,6 +30,27 @@ jobs:
           python tools.py check-policy
       - name: Run the shared check action from this checkout
         uses: ./actions/check
+      # The shared actions run end to end on committed fixtures (tests/data), as a plugin repository runs them.
+      - name: Package the fixture plugin with the shared package action
+        id: fixture-package
+        uses: ./actions/package
+        with:
+          publish-directory: tests/data/plugin/publish
+          metadata-path: tests/data/plugin/plugin.json
+          version-path: tests/data/plugin/version.txt
+          output-directory: ${{ runner.temp }}/fixture-dist
+      - name: The package action wrote the archive and its release files
+        env:
+          ARCHIVE: ${{ steps.fixture-package.outputs.archive }}
+          DIRECTORY: ${{ steps.fixture-package.outputs.directory }}
+        run: |
+          test -s "$ARCHIVE"
+          for file in release.json checksums.txt sbom.spdx.json; do test -s "$DIRECTORY/$file"; done
+      - name: Validate the fixture plugin repository through the check action's catalog branch
+        uses: ./actions/check
+        with:
+          directory: tests/data/repository
+          catalog: 'true'
       # Ahead of the tests: tests/test_workflow_lint_exceptions.py runs this binary from PATH.
       - name: Validate workflows with checksum-pinned actionlint
         env:
