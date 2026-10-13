@@ -28,6 +28,48 @@ jobs:
           python -m ruff check .
           python -m ruff format --check .
           python tools.py check-policy
+      # Consumers pin this tooling by commit with a version comment; the comment means something only while
+      # every version tag has an immutable release. Tags older than the first release predate releases (#21).
+      - name: Check that this repository's releases are immutable and every version tag has one
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          REPO = os.environ['GITHUB_REPOSITORY']
+          VERSION = re.compile(r'v(\d+)\.(\d+)\.(\d+)')
+          def gh(path):
+              # Captured and never echoed: the body of a refused request stays out of the log.
+              done = subprocess.run(['gh', 'api', path], capture_output=True, check=False, timeout=60)
+              if done.returncode or len(done.stdout) > 1_000_000:
+                  raise SystemExit('Release listing request failed')
+              listing = json.loads(done.stdout)
+              if not isinstance(listing, list) or len(listing) >= 100:
+                  raise SystemExit('Unexpected release or tag listing')
+              return listing
+          def version(name):
+              match = VERSION.fullmatch(name)
+              return tuple(map(int, match.groups())) if match else None
+          published = {release['tag_name']: release for release in gh(f'repos/{REPO}/releases?per_page=100') if release.get('draft') is False}
+          tags = [tag['name'] for tag in gh(f'repos/{REPO}/tags?per_page=100') if version(tag['name'])]
+          problems = [f'{tag}: release is not immutable' for tag, release in published.items() if release.get('immutable') is not True]
+          first = min((version(tag) for tag in published if version(tag)), default=None)
+          for tag in tags:
+              if tag in published:
+                  continue
+              if first is not None and version(tag) < first:
+                  print(f'{tag}: predates the first published release')
+                  continue
+              problems.append(f'{tag}: version tag has no published release')
+          for problem in problems:
+              print(problem)
+          if problems:
+              raise SystemExit(f'{len(problems)} release problem(s)')
+          print(f'{len(published)} published releases, all immutable; every later version tag has one')
+          PY
       - name: Run the shared check action from this checkout
         uses: ./actions/check
       # The shared actions run end to end on committed fixtures (tests/data), as a plugin repository runs them.
