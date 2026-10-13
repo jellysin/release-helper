@@ -10,7 +10,7 @@ current base.
 Use the Python version pinned in `.python-version`; CI and the composite actions read
 that file. The reusable workflow reads it from its own commit and refuses any other
 `python3` before its standard-library programs run. Production code supports Python
-3.13 and newer and needs no pip installation. Development dependencies are pinned and
+3.14 and newer, the minor CI tests, and needs no pip installation. Development dependencies are pinned and
 hash checked:
 
 ```sh
@@ -43,7 +43,7 @@ runtime and start no container. The proof on a real Jellyfin server is two steps
 exit status 1 and its `does not offer` line. A change of `SERVER_IMAGE` is reviewed
 like a dependency update, tag and digest together; those two steps run it before merge.
 
-`pyproject.toml` declares supported runtimes (`>=3.13`); `.python-version` pins the
+`pyproject.toml` declares supported runtimes (`>=3.14`, the minor of the pin; tests/test_python_pin.py holds the two equal); `.python-version` pins the
 exact CI interpreter. Renovate's [PEP 621 manager](https://docs.renovatebot.com/modules/manager/pep621/#dependency-types)
 identifies the former as `requires-python`. Its scoped
 [`widen` strategy](https://docs.renovatebot.com/modules/versioning/pep440/#rangesconstraints)

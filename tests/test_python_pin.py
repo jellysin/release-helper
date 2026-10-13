@@ -1,6 +1,7 @@
 """The exact interpreter is pinned once; every setup step reads that file."""
 
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -32,3 +33,10 @@ class PythonPinTests(unittest.TestCase):
         for name in ("README.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md"):
             with self.subTest(name=name):
                 self.assertFalse(version in (ROOT / name).read_text(encoding="utf-8"), "repeats the pin")
+
+    def test_supported_runtimes_start_at_the_tested_minor(self):
+        # CI runs only the pinned interpreter, so the declared floor is that minor, not an untested older one.
+        with (ROOT / "pyproject.toml").open("rb") as stream:
+            project = tomllib.load(stream)
+        major, minor, _ = (ROOT / ".python-version").read_text(encoding="utf-8").strip().split(".")
+        self.assertEqual(project["project"]["requires-python"], f">={major}.{minor}")
