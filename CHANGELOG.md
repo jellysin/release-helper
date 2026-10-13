@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.2](https://github.com/jellysin/release-helper/compare/v1.2.1...v1.2.2) (2026-10-13)
+
+
+### Bug Fixes
+
+* declare the Python floor CI tests (requires-python &gt;=3.14) ([#52](https://github.com/jellysin/release-helper/issues/52)) ([d4232b7](https://github.com/jellysin/release-helper/commit/d4232b7543e07f3f187746e1b6a65c985d79a54f))
+* fail the check action on a catalog value other than true or false ([#41](https://github.com/jellysin/release-helper/issues/41)) ([f27529e](https://github.com/jellysin/release-helper/commit/f27529e4793aad8061bc3a1c6ce36030a5453815))
+* name the tool jellysin-release-helper in requests, SBOMs and messages ([#36](https://github.com/jellysin/release-helper/issues/36)) ([07632eb](https://github.com/jellysin/release-helper/commit/07632ebd4ba3b868cf3d0faffcf19d0b647fcada))
+* point the HISS-11 exception at a workflow that exists ([#43](https://github.com/jellysin/release-helper/issues/43)) ([6d37e95](https://github.com/jellysin/release-helper/commit/6d37e956d5c82c8e51f9c87cfaeac0facb15f152))
+* run the release workflow's programs on the pinned interpreter ([#38](https://github.com/jellysin/release-helper/issues/38)) ([b418aa2](https://github.com/jellysin/release-helper/commit/b418aa2aa79d6449ca0a0839f1c9ae0dc4563cc7))
+
 ## [1.2.1](https://github.com/jellysin/release-helper/compare/v1.2.0...v1.2.1) (2026-10-11)
 
 
