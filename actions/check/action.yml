@@ -5,7 +5,7 @@ inputs:
     description: Repository directory.
     default: .
   catalog:
-    description: Validate manifest.json and plugins.json in the repository.
+    description: Validate manifest.json and plugins.json in the repository, true or false; any other value fails.
     default: 'false'
 runs:
   using: composite
@@ -19,6 +19,10 @@ runs:
         REPOSITORY_DIRECTORY: ${{ inputs.directory }}
         CHECK_CATALOG: ${{ inputs.catalog }}
       run: |
+        case "$CHECK_CATALOG" in
+          true | false) ;;
+          *) echo "Invalid catalog input" >&2; exit 1 ;;
+        esac
         python "$TOOL_ROOT/tools.py" check-policy --directory "$REPOSITORY_DIRECTORY"
         if [[ "$CHECK_CATALOG" == 'true' ]]; then
           python "$TOOL_ROOT/tools.py" validate-catalog --manifest "$REPOSITORY_DIRECTORY/manifest.json" --allowlist "$REPOSITORY_DIRECTORY/plugins.json"
