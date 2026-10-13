@@ -27,9 +27,9 @@ BRANCH = "release-please--branches--main--components--plugin"
 RELEASE_PR = {"headBranchName": "release-please--branches--main", "baseBranchName": "main"}
 
 
-def source(step):
+def source(step, workflow=WORKFLOW):
     """Return the inline program of the named step, exactly as the workflow file carries it."""
-    tail = WORKFLOW.read_text(encoding="utf-8").split(f"      - name: {step}\n", 1)[1]
+    tail = workflow.read_text(encoding="utf-8").split(f"      - name: {step}\n", 1)[1]
     return dedent(tail.split(START, 1)[1].split("          PY\n", 1)[0])
 
 
@@ -50,6 +50,7 @@ def forge(pulls=(), tags=None, **changes):
 @unittest.skipIf(os.name == "nt", "the stand-in gh is a POSIX shell script")
 class StepCase(unittest.TestCase):
     step = None
+    workflow = WORKFLOW
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="jellysin-workflow-")
@@ -71,7 +72,7 @@ class StepCase(unittest.TestCase):
         }
         done = subprocess.run(
             [sys.executable, "-"],
-            input=source(self.step),
+            input=source(self.step, self.workflow),
             env=environment,
             capture_output=True,
             text=True,

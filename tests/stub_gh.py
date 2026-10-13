@@ -22,6 +22,10 @@ def read(state, path):
         return {"object": state["annotations"][name]}
     if kind == "pulls":
         return state["pulls"][name]
+    if path == f"{prefix}releases?per_page=100":
+        return state["releases"]
+    if path == f"{prefix}tags?per_page=100":
+        return state["tag_listing"]
     if path != f"{prefix}issues?state=closed&labels=autorelease%3A%20pending&per_page=20":
         raise SystemExit(f"stub gh: unexpected read {path}")
     pulls = state["pulls"].items()
