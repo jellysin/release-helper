@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from jellysin_tooling.common import ValidationError, atomic_write, decode_json, filename, metadata, semver, timestamp
-from jellysin_tooling.package import archive_bytes, build
+from jellysin_tooling.package import archive_bytes, build, package_files
 from tests.fixtures import COMMIT, CREATED, FIRST, SECOND, Workspace
 
 
@@ -137,3 +137,27 @@ class InputTests(Workspace):
             entry = archive.infolist()[0]
             self.assertEqual((1980, 1, 1, 0, 0, 0), entry.date_time)
             self.assertEqual(0o100644, entry.external_attr >> 16)
+
+
+class PackageLimitTests(Workspace):
+    def test_package_files_exactly_at_the_size_limit_are_read(self):
+        source = self.root / "publish"
+        source.mkdir()
+        (source / FIRST["assemblyFile"]).write_bytes(b"x" * 6)
+        (source / "settings.json").write_bytes(b"{}  ")
+        info = {**FIRST, "packageFiles": ["settings.json"]}
+        with patch("jellysin_tooling.package.MAX_ASSET", 10):
+            self.assertEqual(sum(map(len, package_files(source, info).values())), 10)
+        with patch("jellysin_tooling.package.MAX_ASSET", 9), self.assertRaisesRegex(ValidationError, "oversized"):
+            package_files(source, info)
+
+    def test_archive_exactly_at_the_size_limit_is_written(self):
+        files = {FIRST["assemblyFile"]: b"assembly"}
+        size = len(archive_bytes(files))
+        with patch("jellysin_tooling.package.MAX_ASSET", size):
+            self.assertEqual(len(archive_bytes(files)), size)
+        with (
+            patch("jellysin_tooling.package.MAX_ASSET", size - 1),
+            self.assertRaisesRegex(ValidationError, "asset limit"),
+        ):
+            archive_bytes(files)

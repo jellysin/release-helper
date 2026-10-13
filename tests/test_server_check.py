@@ -711,3 +711,19 @@ class SurfaceTests(ServerCheckCase):
                 "currentDigest": DIGEST,
             },
         )
+
+
+class ListingLimitTests(ServerCheckCase):
+    def test_a_listing_exactly_at_both_bounds_is_read(self):
+        path = self.manifest((FIRST_GUID, "1.0.0", "12.0.0.0"))
+        control = servercheck.controls()
+        entry = read_json(path)[0]
+        filler = {"version": "9.9.9.0", "repositoryName": "elsewhere"}
+        packages = [
+            {**control[0], "versions": [{**control[0]["versions"][1], "repositoryName": servercheck.CONTROLS}]},
+            {**entry, "versions": [{**entry["versions"][0], "repositoryName": servercheck.MANIFEST}] + [filler] * 1999},
+        ]
+        packages += [{"guid": f"22222222-2222-4222-8222-{index:012d}", "versions": [filler]} for index in range(62)]
+        self.assertEqual((len(packages), len(packages[1]["versions"])), (64, 2000))
+        self.jellyfin.packages = packages
+        self.assertIsNone(self.outcome(path)[0])
