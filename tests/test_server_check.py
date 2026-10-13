@@ -692,6 +692,16 @@ class SurfaceTests(ServerCheckCase):
         self.assertIn(f"grep --fixed-strings --quiet '{refusal}'", contents)
         self.assertIn('[[ "$status" -eq 1 ]]', contents)
 
+    def test_ci_runs_the_floor_fixture_on_every_jellyfin_12_minor(self):
+        contents = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        default_minor = int(servercheck.SERVER_IMAGE.split(":")[1].split("@")[0].split(".")[1])
+        pinned = re.findall(r"(?m)^          image: jellyfin/jellyfin:12\.(\d+)@sha256:[0-9a-f]{64}$", contents)
+        self.assertEqual(sorted([*map(int, pinned), default_minor]), list(range(default_minor + 1)))
+        floor_step = (
+            "        uses: ./actions/server-check\n        with:\n          manifest: ${{ runner.temp }}/floor.json\n"
+        )
+        self.assertEqual(contents.count(floor_step), len(pinned) + 1)
+
     def test_renovate_finds_the_default_image_pin(self):
         managers = read_json(ROOT / "renovate.json")["customManagers"]
         self.assertEqual(len(managers), 1)
