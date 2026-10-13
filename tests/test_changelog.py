@@ -4,7 +4,7 @@ import copy
 from unittest.mock import patch
 
 from jellysin_tooling.catalog import merge_manifest, validate_manifest, validate_release
-from jellysin_tooling.changelog import notes, section
+from jellysin_tooling.changelog import bounded, notes, section
 from jellysin_tooling.cli import parser, run
 from jellysin_tooling.common import MAX_NOTES, ValidationError, json_bytes, read_json, release_notes
 from jellysin_tooling.package import build
@@ -197,3 +197,16 @@ class CommandLineNotesTests(Workspace):
         (self.root / "version.txt").write_text("1.0.0-rc.1\n")
         with patch("jellysin_tooling.cli.command", side_effect=[COMMIT, CREATED]), self.assertRaises(ValidationError):
             run(args)
+
+
+class BoundedNotesTests(Workspace):
+    def test_a_cut_section_drops_the_blank_lines_before_the_link(self):
+        link = "https://github.com/jellysin/plugin-lastfm/releases/tag/v1.0.0"
+        lines = ["- first change", "", "", "x" * MAX_NOTES]
+        self.assertEqual(bounded(lines, link), f"- first change\n\n[Full changelog]({link})")
+
+    def test_a_section_exactly_at_the_limit_is_kept_whole(self):
+        link = "https://github.com/jellysin/plugin-lastfm/releases/tag/v1.0.0"
+        lines = ["x" * (MAX_NOTES - 2), "", ""]
+        self.assertEqual(bounded(lines, link), "\n".join(lines))
+        self.assertIn("[Full changelog]", bounded([*lines, "y"], link))
