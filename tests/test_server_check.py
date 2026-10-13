@@ -161,7 +161,9 @@ class Docker:
         self.handler = None
 
     def __call__(self, arguments, cwd=None, timeout=120):
-        assert arguments[0] == "docker" and cwd is None and 0 < timeout <= 600, arguments
+        # The image pull gets 10 minutes and every other step 2, as README.md states (C12-4).
+        assert arguments[0] == "docker" and cwd is None, arguments
+        assert timeout == (600 if arguments[1] == "pull" else 120), (arguments, timeout)
         self.calls.append(arguments[1:])
         step = arguments[1]
         if step == self.interrupt:
