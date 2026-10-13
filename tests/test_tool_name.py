@@ -17,14 +17,14 @@ RETIRED = re.compile(r"jellysin-(?:plugin-)?tooling\b")
 
 
 def message(arguments):
+    """Run the command line; return its exit status and what it wrote to standard error."""
     stderr = io.StringIO()
-    with (
-        patch("sys.argv", ["tools.py", *arguments]),
-        contextlib.redirect_stderr(stderr),
-        contextlib.suppress(SystemExit),
-    ):
-        main()
-    return stderr.getvalue()
+    with patch("sys.argv", ["tools.py", *arguments]), contextlib.redirect_stderr(stderr):
+        try:
+            main()
+        except SystemExit as exc:
+            return exc.code, stderr.getvalue()
+    return 0, stderr.getvalue()
 
 
 class ToolNameTests(Workspace):
@@ -47,8 +47,10 @@ class ToolNameTests(Workspace):
     def test_both_failure_messages_start_with_the_name(self):
         manifest = self.root / "manifest.json"
         manifest.write_text("[1]", encoding="utf-8")
-        refused = message(["validate-catalog", "--manifest", str(manifest)])
-        unreadable = message(["validate-catalog", "--manifest", str(self.root / "missing")])
+        status, refused = message(["validate-catalog", "--manifest", str(manifest)])
+        self.assertEqual(status, 1)
+        status, unreadable = message(["validate-catalog", "--manifest", str(self.root / "missing")])
+        self.assertEqual(status, 1)
         self.assertRegex(refused, r"\Ajellysin-release-helper: \S")
         self.assertRegex(unreadable, r"\Ajellysin-release-helper: [A-Za-z]+Error: operation failed")
         self.assertNotIn("operation failed", refused)
