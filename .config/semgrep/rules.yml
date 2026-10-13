@@ -1,0 +1,60 @@
+# Repository rules for the Semgrep job in .github/workflows/ci.yml. They are local so that the
+# scan reads no rule registry at run time: the pinned image and this file decide every verdict.
+# Each rule restates an invariant from AGENTS.md; a finding fails the job (--error).
+rules:
+  - id: no-dynamic-code-execution
+    languages: [python]
+    severity: ERROR
+    message: eval and exec run code that the repository does not contain (HISS-08).
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+
+  - id: no-shell-subprocess
+    languages: [python]
+    severity: ERROR
+    message: shell=True hands the command line to a shell; pass an argument list instead.
+    pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: subprocess-without-timeout
+    languages: [python]
+    severity: ERROR
+    message: Every external process must be bounded; pass timeout= (HISS-02).
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(...)
+          - pattern: subprocess.call(...)
+          - pattern: subprocess.check_call(...)
+          - pattern: subprocess.check_output(...)
+      - pattern-not: subprocess.$FUNC(..., timeout=$T, ...)
+
+  - id: network-without-timeout
+    languages: [python]
+    severity: ERROR
+    message: Every network call must carry an explicit deadline; pass timeout= (HISS-02).
+    patterns:
+      - pattern-either:
+          - pattern: urllib.request.urlopen(...)
+          - pattern: http.client.HTTPConnection(...)
+          - pattern: http.client.HTTPSConnection(...)
+          - pattern: $OPENER.open(urllib.request.Request(...))
+      - pattern-not: urllib.request.urlopen(..., timeout=$T, ...)
+      - pattern-not: http.client.$CONN(..., timeout=$T, ...)
+      - pattern-not: $OPENER.open(..., timeout=$T, ...)
+
+  - id: no-archive-extraction
+    languages: [python]
+    severity: ERROR
+    message: Release ZIP contents are untrusted; read and validate entries in memory instead of extracting them.
+    pattern-either:
+      - pattern: $ARCHIVE.extractall(...)
+      - pattern: $ARCHIVE.extract(...)
+
+  - id: no-unverified-tls
+    languages: [python]
+    severity: ERROR
+    message: TLS certificate and host name checks stay on; only reviewed HTTPS hosts are allowed.
+    pattern-either:
+      - pattern: ssl._create_unverified_context(...)
+      - pattern: ssl.CERT_NONE
+      - pattern: $CONTEXT.check_hostname = False

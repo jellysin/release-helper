@@ -1,0 +1,2 @@
+# Replaces Semgrep's default ignore list, which skips tests/; the tests run processes too.
+:include .gitignore
