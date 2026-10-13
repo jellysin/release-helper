@@ -197,7 +197,7 @@ class Docker:
         return json.dumps([repository.split(":")[0] + "@" + digest] if self.digests is None else self.digests)
 
     def port(self, _arguments):
-        return self.published or f"127.0.0.1:{self.jellyfin.port}"
+        return f"127.0.0.1:{self.jellyfin.port}" if self.published is None else self.published
 
     def ps(self, arguments):
         name = arguments[arguments.index("--filter") + 1].removeprefix("name=^").removesuffix("$")
@@ -498,9 +498,8 @@ class ContainerTests(ServerCheckCase):
 
     def test_port_must_be_published_on_loopback_only(self):
         for published in ("0.0.0.0:8096", "127.0.0.1:8096\n[::1]:8096", "127.0.0.1:port", ""):
-            self.docker.published = published
             with self.subTest(published=published):
-                self.docker.published = published or " "
+                self.docker.published = published
                 self.assertEqual(self.outcome(self.path)[0], "Server port is not published on loopback only")
                 self.assertEqual(self.docker.containers, set())
 
