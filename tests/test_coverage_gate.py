@@ -38,13 +38,22 @@ def run_gate(calls):
             f"[tool.coverage.report]\nfail_under = {configured_threshold()}\n",
             encoding="utf-8",
         )
-        coverage = [sys.executable, "-m", "coverage"]
-        options = ["--rcfile=gate.toml", "--data-file=.planted-coverage"]
-        common = {"cwd": work, "capture_output": True, "check": False, "timeout": 60}
-        ran = subprocess.run([*coverage, "run", *options, "drive.py"], **common)
+        ran = coverage(work, "run", "drive.py")
         if ran.returncode:
             raise AssertionError(ran.stderr.decode())
-        return subprocess.run([*coverage, "report", *options], **common)
+        return coverage(work, "report")
+
+
+def coverage(work, command, *arguments):
+    """Run one coverage command over the planted data in work."""
+    options = ["--rcfile=gate.toml", "--data-file=.planted-coverage"]
+    return subprocess.run(
+        [sys.executable, "-m", "coverage", command, *options, *arguments],
+        cwd=work,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
 
 
 # Calling every function with a true argument runs 30 of the 40 statements and 10 of the 20 arms;
