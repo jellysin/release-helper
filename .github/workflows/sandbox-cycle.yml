@@ -1,0 +1,86 @@
+name: Sandbox release cycle
+# jellysin/release-helper-sandbox runs a full release cycle with this repository's main head every
+# hour. This workflow reads, with its own token and the public API, whether the newest cycle that
+# tested the current main head succeeded. It opens or updates one issue when that cycle failed, or when
+# no cycle tested the head within two hours of its commit, and closes the issue on the next success.
+on:
+  schedule:
+    - cron: '53 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sandbox-cycle-report
+  cancel-in-progress: false
+jobs:
+  report:
+    name: Report the sandbox release cycle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .python-version
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - name: Open, update or close the issue for the newest sandbox cycle of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import subprocess
+          REPO = os.environ['GITHUB_REPOSITORY']
+          SANDBOX = 'jellysin/release-helper-sandbox'
+          TITLE = 'Sandbox release cycle fails for main'
+          GRACE = datetime.timedelta(hours=2)
+          def gh(*arguments):
+              # Captured and never echoed: the body of a refused request stays out of the log.
+              done = subprocess.run(['gh', 'api', *arguments], capture_output=True, check=False, timeout=60)
+              if done.returncode or len(done.stdout) > 2_000_000:
+                  raise SystemExit('Sandbox cycle request failed')
+              return json.loads(done.stdout) if done.stdout.strip() else None
+          def tested(run):
+              # The cycle names the release-helper commit it tests in a notice annotation of its job.
+              for job in gh(f'repos/{SANDBOX}/actions/runs/{run["id"]}/jobs')['jobs'][:5]:
+                  for note in gh(f'repos/{SANDBOX}/check-runs/{job["id"]}/annotations')[:50]:
+                      if note.get('title') == 'release-helper':
+                          return note.get('message')
+              return None
+          head = gh(f'repos/{REPO}/commits/main')
+          sha, committed = head['sha'], datetime.datetime.fromisoformat(head['commit']['committer']['date'].replace('Z', '+00:00'))
+          runs = gh(f'repos/{SANDBOX}/actions/workflows/cycle.yml/runs?per_page=30')['workflow_runs']
+          newest = next((run for run in runs[:30] if tested(run) == sha), None)
+          issues = [issue for issue in gh(f'repos/{REPO}/issues?state=open&per_page=100') if issue['title'] == TITLE and 'pull_request' not in issue]
+          problem = None
+          if newest is not None and newest['status'] == 'completed' and newest['conclusion'] == 'success':
+              print(f'main {sha}: sandbox cycle succeeded: {newest["html_url"]}')
+              for issue in issues:
+                  gh('--method', 'POST', f'repos/{REPO}/issues/{issue["number"]}/comments', '-f', f'body=The sandbox cycle for main {sha} succeeded: {newest["html_url"]}')
+                  gh('--method', 'PATCH', f'repos/{REPO}/issues/{issue["number"]}', '-f', 'state=closed')
+                  print(f'closed #{issue["number"]}')
+          elif newest is not None and newest['status'] == 'completed':
+              problem = f'The newest sandbox release cycle for main {sha} concluded {newest["conclusion"]}: {newest["html_url"]}'
+          elif newest is not None:
+              print(f'main {sha}: sandbox cycle still running: {newest["html_url"]}')
+          elif datetime.datetime.now(datetime.UTC) - committed > GRACE:
+              problem = f'No sandbox release cycle tested main {sha} within two hours of its commit.'
+          else:
+              print(f'main {sha}: no sandbox cycle yet; committed less than two hours ago')
+          if problem is not None:
+              body = f'{problem}\n\njellysin/release-helper-sandbox runs a full release cycle with release-helper main every hour (.github/workflows/cycle.yml there). This issue closes on the next successful cycle for main.'
+              if issues:
+                  gh('--method', 'PATCH', f'repos/{REPO}/issues/{issues[0]["number"]}', '-f', f'body={body}')
+                  print(f'updated #{issues[0]["number"]}: {problem}')
+              else:
+                  created = gh('--method', 'POST', f'repos/{REPO}/issues', '-f', f'title={TITLE}', '-f', f'body={body}')
+                  print(f'opened #{created["number"]}: {problem}')
+          PY

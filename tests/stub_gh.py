@@ -11,6 +11,9 @@ SECRET = "secret response body"
 
 
 def read(state, path):
+    # A test that lists the exact answers of its reads gets them as given; the paths below serve the rest.
+    if path in state.get("responses", {}):
+        return state["responses"][path]
     prefix = f"repos/{state['repo']}/"
     kind, _, name = path.removeprefix(prefix).rpartition("/")
     if kind == "git/matching-refs/tags":
@@ -34,6 +37,10 @@ def read(state, path):
 
 
 def write(state, arguments):
+    # A test that records issue writes gets each write recorded and a fixed issue number back.
+    if "issue_writes" in state:
+        state["issue_writes"].append(arguments)
+        return {"number": 7}
     method, path = arguments[1], arguments[2]
     number = path.split("/")[4]
     labels = state["pulls"][number]["labels"]
