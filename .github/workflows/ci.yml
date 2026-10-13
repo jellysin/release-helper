@@ -61,6 +61,38 @@ jobs:
           printf '%s\n' "$output"
           [[ "$status" -eq 1 ]]
           grep --fixed-strings --quiet 'does not offer d0973630-1561-4f3a-b26e-664229e6043e 1.0.0.0 (targetAbi 12.65534.0.0)' <<<"$output"
+  # The whole history, not only the tree: a credential removed in a later commit still leaks.
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scan the history with checksum-pinned gitleaks
+        env:
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/gitleaks-bin"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
+          "$RUNNER_TEMP/gitleaks-bin/gitleaks" git --redact --no-banner --exit-code 1 .
+  # The rules are local (.config/semgrep/rules.yml) and the container has no network, so no
+  # registry rule or update decides a verdict; any finding fails the job.
+  semgrep:
+    name: static analysis (semgrep)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The image stays literal in the command: praetorctl audit reads it there to see semgrep run.
+      - name: Scan with the digest-pinned semgrep image
+        run: docker run --rm --network none --volume "$GITHUB_WORKSPACE:/src" --workdir /src semgrep/semgrep:1.180.0@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3 semgrep scan --config .config/semgrep/rules.yml --error --metrics off --disable-version-check .
   governance:
     name: governance (praetor)
     runs-on: ubuntu-24.04
@@ -77,7 +109,7 @@ jobs:
       # (.config/lefthook/engine.sh) and run the same engine CI installs. One value only.
       - name: Install praetorctl
         env:
-          PRAETOR_REF: 7cf9cbb2d8cce4000bde5ba2cf2a5b770fc90712
+          PRAETOR_REF: 3bbde07342bdece12c46f74b0ee2c1f51129478f
         run: |
           go install "github.com/cordanaLLM/praetor/cmd/standardsctl@${PRAETOR_REF}"
           ln -s "$(go env GOPATH)/bin/standardsctl" "$(go env GOPATH)/bin/praetorctl"

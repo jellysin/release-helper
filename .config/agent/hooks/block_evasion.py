@@ -141,7 +141,7 @@ def pending_command():
     try:
         return read_payload_command(sys.stdin.buffer)
     except (ValueError, OSError, RecursionError) as error:
-        raise Blocked(INVALID_INPUT_REFUSAL + str(error))
+        raise Blocked(INVALID_INPUT_REFUSAL + str(error)) from error
 
 
 def check_environment(environ):
