@@ -32,6 +32,7 @@ from .common import (
 from .github import verify_attestation
 
 PLUGIN_FIELDS = frozenset({"guid", "name", "description", "overview", "owner", "category", "versions"})
+REQUIRED_ASSETS = frozenset({"release.json", "checksums.txt", "sbom.spdx.json"})
 LINK = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
 
 
@@ -238,12 +239,22 @@ def release_assets(release, repo, tag, *, authenticated_draft=False):
     return result
 
 
+def incomplete(remote, repo, tag):
+    # An empty or partial release is skipped with a warning so that it never blocks older or newer imports.
+    if REQUIRED_ASSETS <= release_assets(remote, repo, tag).keys():
+        return False
+    print(
+        f"::warning title=Catalog import skipped::{repo} {tag}: release has no metadata, checksums, or SBOM", flush=True
+    )
+    return True
+
+
 def verified_release(client, approved, remote, verifier=verify_attestation):
     repo = approved["repository"]
     tag = remote["tag_name"]
     assets = release_assets(remote, repo, tag)
     require(
-        {"release.json", "checksums.txt", "sbom.spdx.json"} <= assets.keys(),
+        REQUIRED_ASSETS <= assets.keys(),
         "Release is missing metadata, checksums, or SBOM",
     )
     metadata_bytes = client.download(assets["release.json"]["browser_download_url"])
@@ -288,6 +299,8 @@ def collect(client, approved_plugins, current, verifier=verify_attestation):
                     continue
                 if len(pending) == 20:
                     return merge_manifest(current, pending)
+                if incomplete(remote, approved["repository"], tag):
+                    continue
                 pending.append(verified_release(client, approved, remote, verifier))
                 known.add((approved["guid"], version))
             if len(releases) < 100:
