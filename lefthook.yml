@@ -44,4 +44,5 @@ pre-push:
     audit:
       run: sh .config/lefthook/engine.sh audit
     gate:
-      run: sh .config/lefthook/engine.sh gate run --path=. --admit-unsupported
+      # make verify-all runs in a temporary worktree without .venv; point it at this checkout's.
+      run: DEV_VENV="$PWD/.venv" sh .config/lefthook/engine.sh gate run --path=. --admit-unsupported
