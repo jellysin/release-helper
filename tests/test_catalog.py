@@ -1,5 +1,6 @@
 """Exercise the complete catalog import, trust boundary, and immutable history."""
 
+import contextlib
 import copy
 import io
 import zipfile
@@ -70,13 +71,95 @@ class CatalogTests(Workspace):
     def test_limits_pending_imports_and_api_pagination(self):
         release, _ = self.plugin()
         client = Mock()
-        client.api.return_value = [{"tag_name": f"v1.0.{index}", "immutable": True} for index in range(21)]
+        repo = approved()["repository"]
+        client.api.return_value = [
+            {
+                "tag_name": f"v1.0.{index}",
+                "immutable": True,
+                "assets": [
+                    {
+                        "name": name,
+                        "state": "uploaded",
+                        "size": 100,
+                        "browser_download_url": f"https://github.com/{repo}/releases/download/v1.0.{index}/{name}",
+                    }
+                    for name in ("release.json", "checksums.txt", "sbom.spdx.json")
+                ],
+            }
+            for index in range(21)
+        ]
         with patch("jellysin_tooling.catalog.verified_release", return_value=release) as verify:
             collect(client, [approved()], [])
         self.assertEqual(20, verify.call_count)
         client.api.return_value = [{"draft": True}] * 100
         with self.assertRaisesRegex(ValidationError, "1000"):
             collect(client, [approved()], [])
+
+    def test_empty_assets_release_skipped_with_warning_and_valid_releases_imported(self):
+        client = FakeGitHub()
+        release_0, output_0 = self.plugin(version="1.0.0")
+        release_1, output_1 = self.plugin(version="1.0.1")
+        remote_0 = client.add(FIRST, release_0, output_0)
+        remote_1 = client.add(FIRST, release_1, output_1)
+        repo = FIRST["repository"]
+        incomplete = {
+            "tag_name": "v1.0.2",
+            "draft": False,
+            "prerelease": False,
+            "immutable": True,
+            "assets": [],
+        }
+        client.releases[repo] = [incomplete, remote_1, remote_0]
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            result = collect(client, [approved(FIRST)], [], Mock())
+        expected_warning = (
+            f"::warning title=Catalog import skipped::{repo} v1.0.2: release has no metadata, checksums, or SBOM\n"
+        )
+        self.assertEqual(expected_warning, stream.getvalue())
+        self.assertEqual(["1.0.1.0", "1.0.0.0"], [v["version"] for v in result[0]["versions"]])
+
+    def test_release_missing_sbom_skipped_with_warning_and_others_imported(self):
+        client = FakeGitHub()
+        release_0, output_0 = self.plugin(version="1.0.0")
+        release_1, output_1 = self.plugin(version="1.0.1")
+        remote_0 = client.add(FIRST, release_0, output_0)
+        remote_1 = client.add(FIRST, release_1, output_1)
+        repo = FIRST["repository"]
+        remote_1["assets"] = [asset for asset in remote_1["assets"] if asset["name"] != "sbom.spdx.json"]
+        client.releases[repo] = [remote_1, remote_0]
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            result = collect(client, [approved(FIRST)], [], Mock())
+        expected_warning = (
+            f"::warning title=Catalog import skipped::{repo} v1.0.1: release has no metadata, checksums, or SBOM\n"
+        )
+        self.assertEqual(expected_warning, stream.getvalue())
+        self.assertEqual(["1.0.0.0"], [v["version"] for v in result[0]["versions"]])
+
+    def test_tampered_checksums_aborts_collect_and_imports_nothing(self):
+        client = FakeGitHub()
+        release_0, output_0 = self.plugin(version="1.0.0")
+        release_1, output_1 = self.plugin(version="1.0.1")
+        remote_0 = client.add(FIRST, release_0, output_0)
+        remote_1 = client.add(FIRST, release_1, output_1)
+        repo = FIRST["repository"]
+        url = next(item["browser_download_url"] for item in remote_1["assets"] if item["name"] == "checksums.txt")
+        client.downloads[url] = b"forged"
+        client.releases[repo] = [remote_1, remote_0]
+        with self.assertRaisesRegex(ValidationError, "Release checksum manifest mismatch"):
+            collect(client, [approved(FIRST)], [], Mock())
+
+    def test_missing_plugin_zip_is_not_skipped_and_raises(self):
+        client = FakeGitHub()
+        release, output = self.plugin(version="1.0.0")
+        remote = client.add(FIRST, release, output)
+        remote["assets"] = [asset for asset in remote["assets"] if asset["name"] != release["archive"]["name"]]
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            with self.assertRaisesRegex(ValidationError, "Release is missing plugin ZIP"):
+                collect(client, [approved(FIRST)], [], Mock())
+        self.assertEqual("", stream.getvalue())
 
     def test_atomic_update_and_noop(self):
         release, _ = self.plugin()

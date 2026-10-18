@@ -269,7 +269,9 @@ are preserved.
 
 Scans are bounded to 32 repositories, 1,000 releases per repository, and 20 new
 versions per batch; remaining releases follow after that plugin repository PR merges.
-Drafts and prereleases are skipped. Failed or over-limit scans
+Drafts and prereleases are skipped. A published release without metadata, checksums or
+SBOM is skipped too, with a `Catalog import skipped` warning that names its repository and
+tag in the run summary; every other release still imports. Failed or over-limit scans
 leave the plugin repository unchanged; resolve the source problem and rerun. Already listed
 versions are not re-downloaded each poll; source repositories must enable immutable
 releases. Plugin repository changes go through PRs.
