@@ -88,11 +88,20 @@ def create_draft(repo, tag, body, runner):
     return created
 
 
-def prepare(client, repo, tag, commit, version_path="version.txt", changelog_path=None, runner=command):
+def prepare(
+    client, repo, tag, commit, version_path="version.txt", changelog_path=None, runner=command, *, skip_tagged=False
+):
+    """Return the draft; with skip_tagged, return None and write nothing when the tag already names the commit."""
     repository(repo)
     version = approved_version(tag, commit, version_path)
     dispatch_context(repo, commit)
     body = release_body(commit, changelog_path, version)
+    if skip_tagged:
+        # Another writer (the merge train) made the tag and its release; its release state is not ours to judge.
+        existing = tagged_commit(client, repo, tag)
+        require(existing in (None, commit), "Tag already names another commit")
+        if existing is not None:
+            return None
     # Read both remote states before the first write: a conflict must leave nothing behind.
     draft = unpublished(client, repo, tag)
     existing = tagged_commit(client, repo, tag)

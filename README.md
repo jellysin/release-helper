@@ -182,6 +182,11 @@ both back. A matching tag and draft need no write, so a repeated run changes not
 and an existing draft keeps its text. After a failure, run the same command again:
 a tag without a draft, or a draft without a tag, is completed.
 
+`--skip-tagged` (action input `skip-tagged: 'true'`) is for a repository whose
+release another writer creates, such as the merge train. A tag that already names the
+commit then ends the command without a read of the releases and without a write; a tag
+on another commit is still refused, and an untagged version is prepared as above.
+
 Recipe for a plugin repository:
 
 1. Add `.github/workflows/prepare-release.yml` with `workflow_dispatch` inputs `tag`
@@ -199,8 +204,9 @@ the built-in token a named target whose workflow files differ from the default b
 When GitHub refuses the tag creation itself, a maintainer pushes the tag to the
 approved commit and runs the command again; it then only adds the draft.
 
-This repository prepares its own releases with the same workflow file and the action
-from its own checkout; CONTRIBUTING.md describes the steps.
+This repository keeps the same workflow file, with the action from its own checkout
+and `skip-tagged: 'true'`, as the fallback behind the merge train; CONTRIBUTING.md
+describes the steps.
 
 ## Server check
 

@@ -16,6 +16,9 @@ inputs:
   changelog-path:
     description: Repository path of the release-please changelog; its section becomes the draft text.
     default: ''
+  skip-tagged:
+    description: "'true' writes nothing when the tag already names the commit, for a repository whose release another writer creates."
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -30,7 +33,13 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         VERSION_PATH: ${{ inputs.version-path }}
         CHANGELOG_PATH: ${{ inputs.changelog-path }}
+        SKIP_TAGGED: ${{ inputs.skip-tagged }}
       run: |
         args=(--repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --version-path "$VERSION_PATH")
         if [[ -n "$CHANGELOG_PATH" ]]; then args+=(--changelog-path "$CHANGELOG_PATH"); fi
+        case "$SKIP_TAGGED" in
+          true) args+=(--skip-tagged) ;;
+          false) ;;
+          *) echo "skip-tagged must be 'true' or 'false'" >&2; exit 1 ;;
+        esac
         python "$TOOL_ROOT/tools.py" prepare "${args[@]}"

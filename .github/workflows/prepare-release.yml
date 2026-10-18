@@ -27,10 +27,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Create the tag and one unpublished draft with this checkout's own command
+      # The merge train writes this repository's tag and release when the release PR merges; this run
+      # only fills in a version the train left untagged.
+      - name: Create the tag and one unpublished draft unless the merge train already tagged the version
         uses: ./actions/prepare
         with:
           tag: ${{ inputs.tag }}
           commit: ${{ inputs.commit }}
           token: ${{ github.token }}
           changelog-path: CHANGELOG.md
+          skip-tagged: 'true'

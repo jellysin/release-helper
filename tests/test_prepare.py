@@ -196,6 +196,33 @@ class PreparationTests(PrepareCase):
         self.assertEqual([REFS, RELEASES], remote.endpoints())
 
 
+class SkipTaggedTests(PrepareCase):
+    def test_a_tag_on_the_commit_with_the_train_release_writes_nothing(self):
+        for releases in ([], [release(draft=False)], [release(draft=False, immutable=True)], [release()]):
+            with self.subTest(releases=releases):
+                remote = Remote({TAG: COMMIT}, releases)
+                self.assertIsNone(self.prepare(remote, changelog_path="CHANGELOG.md", skip_tagged=True))
+                self.assertEqual(([], {TAG: COMMIT}, releases), (remote.writes, remote.tags, remote.releases))
+
+    def test_an_untagged_version_is_prepared_as_without_the_option(self):
+        remote = Remote()
+        self.assertEqual(release(), self.prepare(remote, skip_tagged=True))
+        self.assertEqual(([REFS, RELEASES], {TAG: COMMIT}), (remote.endpoints(), remote.tags))
+
+    def test_a_tag_on_another_commit_is_still_refused_before_any_write(self):
+        for releases in ([], [release(draft=False)]):
+            with self.subTest(releases=releases):
+                self.refused(Remote({TAG: OTHER}, releases), "another commit", skip_tagged=True)
+
+    def test_a_published_release_without_the_option_is_still_a_conflict(self):
+        self.refused(Remote({TAG: COMMIT}, [release(draft=False)]), "published release already uses")
+
+    def test_a_longer_tag_with_the_same_prefix_does_not_skip(self):
+        remote = Remote({"v1.2.30": COMMIT})
+        self.prepare(remote, skip_tagged=True)
+        self.assertEqual([REFS, RELEASES], remote.endpoints())
+
+
 class ConflictTests(PrepareCase):
     def test_published_immutable_or_ambiguous_releases_stop_before_any_write(self):
         cases = (
@@ -449,20 +476,22 @@ class InterfaceTests(Workspace):
     def test_command_passes_every_option_and_the_real_runner(self):
         base = ["prepare", "--repo", REPO, "--tag", TAG, "--commit", COMMIT]
         cases = (
-            ([], ("version.txt", None)),
+            ([], ("version.txt", None), False),
             (
                 ["--version-path", "src/version.txt", "--changelog-path", "CHANGELOG.md"],
                 ("src/version.txt", "CHANGELOG.md"),
+                False,
             ),
+            (["--skip-tagged"], ("version.txt", None), True),
         )
-        for options, expected in cases:
+        for options, expected, skip in cases:
             with (
                 self.subTest(options=len(options)),
                 patch("jellysin_tooling.cli.GitHub") as client,
                 patch("jellysin_tooling.cli.prepare.prepare") as prepared,
             ):
                 run(parser().parse_args(base + options))
-                prepared.assert_called_once_with(client.return_value, REPO, TAG, COMMIT, *expected)
+                prepared.assert_called_once_with(client.return_value, REPO, TAG, COMMIT, *expected, skip_tagged=skip)
         self.assertIs(command, prepare.prepare.__defaults__[-1])
 
     def test_action_passes_inputs_through_the_environment_only(self):
@@ -471,3 +500,18 @@ class InterfaceTests(Workspace):
         self.assertNotIn("${{", script)
         self.assertIn('python "$TOOL_ROOT/tools.py" prepare "${args[@]}"', script)
         self.assertIn('--repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"', script)
+
+    def test_action_accepts_only_true_or_false_for_skip_tagged(self):
+        action = Path(__file__).resolve().parents[1] / "actions" / "prepare" / "action.yml"
+        script = action.read_text(encoding="utf-8").split("      run: |\n", 1)[1]
+        script = script.replace('python "$TOOL_ROOT/tools.py" prepare "${args[@]}"', 'printf "%s\\n" "${args[@]}"')
+        script = "\n".join(line.removeprefix("        ") for line in script.splitlines())
+        base = {"GITHUB_REPOSITORY": REPO, "RELEASE_TAG": TAG, "RELEASE_COMMIT": COMMIT, "VERSION_PATH": "version.txt"}
+        for value, code, flagged in (("true", 0, True), ("false", 0, False), ("TRUE", 1, False), ("", 1, False)):
+            with self.subTest(value=value):
+                environment = {"PATH": os.environ["PATH"], **base, "CHANGELOG_PATH": "", "SKIP_TAGGED": value}
+                result = subprocess.run(
+                    ["bash", "-c", script], env=environment, capture_output=True, text=True, timeout=30, check=False
+                )
+                self.assertEqual(code, result.returncode, result.stderr)
+                self.assertEqual(flagged, "--skip-tagged" in result.stdout.splitlines())

@@ -1,4 +1,4 @@
-"""This repository prepares its own release with the workflow the command accepts."""
+"""This repository keeps the workflow the command accepts as the fallback behind the merge train."""
 
 import re
 import unittest
@@ -31,7 +31,7 @@ class OwnReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("          fetch-depth: 0\n", checkout)
         self.assertIn("          persist-credentials: false\n", checkout)
 
-    def test_runs_the_command_of_this_checkout_with_the_built_in_token(self):
+    def test_runs_the_command_of_this_checkout_with_the_built_in_token_and_skips_a_train_tag(self):
         step = self.contents.split("        uses: ./actions/prepare\n", 1)[1]
         self.assertEqual(
             step,
@@ -39,7 +39,8 @@ class OwnReleaseWorkflowTests(unittest.TestCase):
             "          tag: ${{ inputs.tag }}\n"
             "          commit: ${{ inputs.commit }}\n"
             "          token: ${{ github.token }}\n"
-            "          changelog-path: CHANGELOG.md\n",
+            "          changelog-path: CHANGELOG.md\n"
+            "          skip-tagged: 'true'\n",
         )
         self.assertNotIn("run:", self.contents)
         self.assertNotIn("secrets.", self.contents)
