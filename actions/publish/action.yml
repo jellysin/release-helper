@@ -13,6 +13,9 @@ inputs:
   verified-tag-recovery:
     description: Recover an already attested exact tag from the approved main recovery workflow.
     default: 'false'
+  signer-workflow:
+    description: Approved workflow that attested the release artifacts.
+    default: .github/workflows/release.yml
 runs:
   using: composite
   steps:
@@ -26,6 +29,7 @@ runs:
         RELEASE_TAG: ${{ inputs.tag }}
         GH_TOKEN: ${{ inputs.token }}
         VERIFIED_TAG_RECOVERY: ${{ inputs.verified-tag-recovery }}
+        SIGNER_WORKFLOW: ${{ inputs.signer-workflow }}
       run: |
         recovery=()
         case "$VERIFIED_TAG_RECOVERY" in
@@ -33,4 +37,4 @@ runs:
           false) ;;
           *) echo "Invalid verified-tag-recovery input" >&2; exit 1 ;;
         esac
-        python "$TOOL_ROOT/tools.py" publish --directory "$RELEASE_DIRECTORY" --tag "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${recovery[@]}"
+        python "$TOOL_ROOT/tools.py" publish --directory "$RELEASE_DIRECTORY" --tag "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW" "${recovery[@]}"

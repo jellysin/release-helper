@@ -13,6 +13,7 @@ from .common import (
     MAX_FILES,
     MAX_RELEASES,
     SHA,
+    SIGNER_WORKFLOWS,
     atomic_write,
     decode_json,
     digest,
@@ -47,7 +48,7 @@ def allowlist(value):
         )
         repository(plugin["repository"])
         require(str(UUID(plugin["guid"])) == plugin["guid"], "Invalid allowlisted GUID")
-        require(plugin["signerWorkflow"] == ".github/workflows/release.yml", "Unapproved release workflow")
+        require(plugin["signerWorkflow"] in SIGNER_WORKFLOWS, "Unapproved release workflow")
         require(plugin["guid"] not in identities and plugin["repository"] not in repos, "Duplicate plugin identity")
         identities.add(plugin["guid"])
         repos.add(plugin["repository"])

@@ -29,6 +29,7 @@ def parser():
     publish.add_argument("--repo", required=True)
     publish.add_argument("--tag", required=True)
     publish.add_argument("--workflow", default=".github/workflows/release.yml")
+    publish.add_argument("--signer-workflow", default=".github/workflows/release.yml")
     publish.add_argument("--verified-tag-recovery", action="store_true")
     draft = commands.add_parser("prepare")
     draft.add_argument("--repo", required=True)
@@ -124,6 +125,7 @@ def run(arguments):
             arguments.repo,
             arguments.tag,
             arguments.workflow,
+            signer_workflow=arguments.signer_workflow,
             verified_tag_recovery=arguments.verified_tag_recovery,
         )
         return

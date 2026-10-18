@@ -29,6 +29,11 @@ class PublishCommandTests(Workspace):
             ({"repo": "jellysin"}, (), "Invalid repository"),
             ({"repo": "jellysin/plugin lastfm"}, (), "Invalid repository"),
             ({}, ("--workflow", ".github/workflows/other.yml"), "Unapproved publisher workflow"),
+            ({}, ("--signer-workflow", "evil.yml"), "Unapproved signer workflow"),
+            ({}, ("--signer-workflow", ".github/workflows/Release.yml"), "Unapproved signer workflow"),
+            ({}, ("--signer-workflow", "./.github/workflows/build-signed.yml"), "Unapproved signer workflow"),
+            ({}, ("--signer-workflow", ".github/workflows/recover-release.yml"), "Unapproved signer workflow"),
+            ({}, ("--signer-workflow", ".github/workflows/release.yml "), "Unapproved signer workflow"),
             ({"tag": "1.0.0"}, (), "Release tag must start with v"),
             ({"tag": "v1.0"}, (), "Expected stable x.y.z version"),
             ({"tag": "v1.0.0-rc.1"}, (), "Expected stable x.y.z version"),
@@ -37,6 +42,23 @@ class PublishCommandTests(Workspace):
         for options, extra, reason in cases:
             with self.subTest(options=options, extra=extra):
                 self.assert_refused_before_any_call(self.publish(*extra, **options), reason)
+
+    def test_signer_workflow_is_forwarded_to_release_publish(self):
+        with patch("jellysin_tooling.cli.release.publish") as publish:
+            message(["publish", "--repo", FIRST["repository"], "--tag", "v1.0.0"])
+            self.assertEqual(publish.call_args.kwargs["signer_workflow"], ".github/workflows/release.yml")
+            message(
+                [
+                    "publish",
+                    "--repo",
+                    FIRST["repository"],
+                    "--tag",
+                    "v1.0.0",
+                    "--signer-workflow",
+                    ".github/workflows/build-signed.yml",
+                ]
+            )
+            self.assertEqual(publish.call_args.kwargs["signer_workflow"], ".github/workflows/build-signed.yml")
 
     def test_the_highest_assembly_version_reaches_the_exact_tag_check(self):
         (status, stderr), _, runner = self.publish(tag="v65534.0.0", git=[SHA, "b" * 40])

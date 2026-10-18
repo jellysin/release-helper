@@ -145,7 +145,9 @@ inputs above; it outputs `archive` and `directory`.
 For a separately authorized publication, attest **all four artifacts** using
 `actions/attest` in the plugin's tag-dispatched
 `.github/workflows/release.yml`, then call `actions/publish` with `directory`, `tag`
-and the built-in `token`. An existing draft and the exact tag are prerequisites;
+and the built-in `token`. Optional input `signer-workflow` defaults to
+`.github/workflows/release.yml`; allowed values are `.github/workflows/release.yml`
+and `.github/workflows/build-signed.yml`. An existing draft and the exact tag are prerequisites;
 release PR preparation creates neither, `actions/prepare` creates both. GitHub currently requires maintainer approval of
 `GITHUB_TOKEN`-created PR workflows, including later updates; dispatching CI does
 not clear that separate approval gate. This is the documented
@@ -252,9 +254,12 @@ its own web directory, so no file leaves the machine.
 
 Only allowlisted public releases are accepted. Every new artifact needs valid
 signatures bound to the repository, approved workflow, source SHA, exact tag and
-GitHub-hosted runner. Metadata, checksums, ZIP entries and the complete expected
-SPDX identity, file inventory and dependency relationships are validated
-before the plugin repository changes. Existing plugin repository versions are preserved.
+GitHub-hosted runner. In `plugins.json`, each entry sets `signerWorkflow` to an
+approved workflow (`.github/workflows/release.yml` or
+`.github/workflows/build-signed.yml`). Metadata, checksums, ZIP entries and the
+complete expected SPDX identity, file inventory and dependency relationships are
+validated before the plugin repository changes. Existing plugin repository versions
+are preserved.
 
 Scans are bounded to 32 repositories, 1,000 releases per repository, and 20 new
 versions per batch; remaining releases follow after that plugin repository PR merges.

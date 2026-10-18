@@ -46,10 +46,12 @@ class NetworkTests(unittest.TestCase):
     def test_redirect_to_unapproved_host_never_receives_request(self):
         client = GitHub("fixture-token")
         client.opener = Mock()
-        client.opener.open.side_effect = urllib.error.HTTPError("", 302, "", {"Location": "https://evil.test/"}, None)
+        error = urllib.error.HTTPError("", 302, "", {"Location": "https://evil.test/"}, None)
+        client.opener.open.side_effect = error
         with self.assertRaises(ValidationError):
             client.download("https://github.com/x")
         self.assertEqual(1, client.opener.open.call_count)
+        self.assertTrue(error.fp.closed)
 
     def test_api_redirect_and_http_error_are_redacted(self):
         client = GitHub("fixture-token")

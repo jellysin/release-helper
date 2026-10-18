@@ -69,9 +69,29 @@ class RecordedInputTests(unittest.TestCase):
         environment = {"GITHUB_REPOSITORY": REPOSITORY}
         inputs = {"directory": "artifacts", "tag": "v1.2.3", "token": "synthetic-token"}
         argv, token = self.argv("publish", inputs, environment)
-        self.assertEqual(argv, [TOOLS, "publish", "--directory", "artifacts", "--tag", "v1.2.3", "--repo", REPOSITORY])
+        self.assertEqual(
+            argv,
+            [
+                TOOLS,
+                "publish",
+                "--directory",
+                "artifacts",
+                "--tag",
+                "v1.2.3",
+                "--repo",
+                REPOSITORY,
+                "--signer-workflow",
+                ".github/workflows/release.yml",
+            ],
+        )
         self.assertEqual(token, "synthetic-token")
         self.assertNotIn("synthetic-token", argv)
+        argv, _ = self.argv(
+            "publish",
+            {**inputs, "signer-workflow": ".github/workflows/build-signed.yml"},
+            environment,
+        )
+        self.assertEqual(argv[-2:], ["--signer-workflow", ".github/workflows/build-signed.yml"])
 
     def test_publish_adds_recovery_only_for_true(self):
         environment = {"GITHUB_REPOSITORY": REPOSITORY}
