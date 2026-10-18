@@ -11,10 +11,12 @@ Use the Python version pinned in `.python-version`; CI and the composite actions
 that file. The reusable workflow reads it from its own commit and refuses any other
 `python3` before its standard-library programs run. Production code supports Python
 3.14 and newer, the minor CI tests, and needs no pip installation. Development dependencies are pinned and
-hash checked:
+hash checked. `make bootstrap` installs them into `.venv` with `--require-hashes`; `make verify-all`
+uses that environment and fails, naming `make bootstrap`, when `.venv` is missing or older than
+`requirements-dev.txt`. The commands it runs, with `.venv/bin/python` as `python`:
 
 ```sh
-python -m pip install --require-hashes -r requirements-dev.txt
+make bootstrap
 python -m ruff check .
 python -m ruff format --check .
 python -m coverage run -m unittest discover -s tests
