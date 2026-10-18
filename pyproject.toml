@@ -18,11 +18,8 @@ select = ["E4", "E7", "E9", "F", "I", "B", "UP", "C90", "PLR0915"]
 
 # Praetor writes these three files, and a local repair disables its checkpoint lifecycle
 # (cordanaLLM/praetor#1204). Each entry ends 2027-01-09: tests/test_lint_exceptions.py fails
-# after that date, and as soon as a file passes without its entry.
-[tool.ruff.lint.per-file-ignores]
-".config/lefthook/scripts/checkpoint.py" = ["I001"] # cordanaLLM/praetor#1204, until 2027-01-09
-".config/lefthook/scripts/common.py" = ["I001"] # cordanaLLM/praetor#1204, until 2027-01-09
-
+# after that date, and as soon as a file passes without its entry. The import-order (I001)
+# entries are gone: the refreshed files pass it.
 [tool.ruff.format]
 exclude = [
   ".config/agent/hooks/block_evasion.py", # cordanaLLM/praetor#1204, until 2027-01-09
