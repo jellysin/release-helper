@@ -3,6 +3,10 @@
 import copy
 from unittest.mock import Mock
 
+from spdx_tools.spdx.parser.error import SPDXParsingError
+from spdx_tools.spdx.parser.jsonlikedict.json_like_dict_parser import JsonLikeDictParser
+from spdx_tools.spdx.validation.document_validator import validate_full_spdx_document
+
 from jellysin_tooling.catalog import verified_release
 from jellysin_tooling.common import ValidationError, decode_json, digest, json_bytes
 from jellysin_tooling.inventory import from_restore
@@ -93,3 +97,26 @@ class SpdxTests(Workspace):
             remote = client.add(FIRST, release, output)
             with self.subTest(mutation=mutation), self.assertRaisesRegex(ValidationError, "SBOM differs"):
                 verified_release(client, approved(), remote, Mock())
+
+
+class UpstreamSpdxValidatorTests(Workspace):
+    """The pinned spdx-tools validator accepts the generated SBOM and refuses a document without a namespace."""
+
+    def upstream_messages(self, document):
+        try:
+            parsed = JsonLikeDictParser().parse(document)
+        except SPDXParsingError as error:
+            return error.get_messages()
+        return [message.validation_message for message in validate_full_spdx_document(parsed)]
+
+    def test_generated_document_passes_spdx_tools_validation(self):
+        _, output = self.plugin()
+        document = decode_json((output / "sbom.spdx.json").read_bytes())
+        self.assertEqual([], self.upstream_messages(document))
+
+    def test_document_without_namespace_fails_spdx_tools_validation(self):
+        _, output = self.plugin()
+        document = decode_json((output / "sbom.spdx.json").read_bytes())
+        del document["documentNamespace"]
+        messages = self.upstream_messages(document)
+        self.assertTrue(any("namespace" in message for message in messages), messages)
