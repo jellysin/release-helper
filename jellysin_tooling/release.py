@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from . import spdx
 from .catalog import release_assets, validate_archive, validate_release
-from .common import MAX_ASSET, SHA, decode_json, digest, read_json, repository, require, semver
+from .common import MAX_ASSET, SHA, SIGNER_WORKFLOWS, decode_json, digest, read_json, repository, require, semver
 from .github import command, verify_attestation
 
 
@@ -196,10 +196,20 @@ def upload_missing(client, directory, files, missing, repo, tag, release_id, run
 
 
 def publish(
-    client, directory, repo, tag, workflow, verifier=verify_attestation, runner=command, *, verified_tag_recovery=False
+    client,
+    directory,
+    repo,
+    tag,
+    workflow,
+    verifier=verify_attestation,
+    runner=command,
+    *,
+    signer_workflow=".github/workflows/release.yml",
+    verified_tag_recovery=False,
 ):
     repository(repo)
     require(workflow == ".github/workflows/release.yml", "Unapproved publisher workflow")
+    require(signer_workflow in SIGNER_WORKFLOWS, "Unapproved signer workflow")
     commit = exact_tag(tag)
     publication_context(repo, tag, commit, verified_tag_recovery)
     release = read_json(Path(directory) / "release.json")
@@ -208,7 +218,7 @@ def publish(
     require(release["commit"] == commit == remote_tag(client, repo, tag), "Local, remote and metadata commits differ")
     files = local_artifacts(directory, release)
     for name in sorted(files):
-        verifier(Path(directory) / name, repo, workflow, commit, tag)
+        verifier(Path(directory) / name, repo, signer_workflow, commit, tag)
     found = find_release(client, repo, tag)
     release_id = found["id"]
     remote = read_release(client, repo, tag, release_id)

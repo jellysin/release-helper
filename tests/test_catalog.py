@@ -89,7 +89,27 @@ class CatalogTests(Workspace):
 
     def test_allowlist_duplicate_identity_and_workflow(self):
         self.assertEqual([approved()], allowlist({"schemaVersion": 1, "plugins": [approved()]}))
-        for plugins in ([], [approved(), approved()], [{**approved(), "signerWorkflow": "evil.yml"}], [None]):
+        build_signed = {**approved(), "signerWorkflow": ".github/workflows/build-signed.yml"}
+        self.assertEqual([build_signed], allowlist({"schemaVersion": 1, "plugins": [build_signed]}))
+        unapproved = (
+            "evil.yml",
+            "./.github/workflows/build-signed.yml",
+            "./.github/workflows/release.yml",
+            ".github/workflows/Release.yml",
+            ".github/workflows/BUILD-SIGNED.YML",
+            ".github/workflows/release.yml ",
+            ".github/workflows/build-signed.yml ",
+            ".github/workflows/recover-release.yml",
+            "other/repo/.github/workflows/build-signed.yml",
+            "",
+        )
+        for workflow in unapproved:
+            with (
+                self.subTest(workflow=workflow),
+                self.assertRaisesRegex(ValidationError, "Unapproved release workflow"),
+            ):
+                allowlist({"schemaVersion": 1, "plugins": [{**approved(), "signerWorkflow": workflow}]})
+        for plugins in ([], [approved(), approved()], [None]):
             with self.subTest(plugins=plugins), self.assertRaises(ValidationError):
                 allowlist({"schemaVersion": 1, "plugins": plugins})
 

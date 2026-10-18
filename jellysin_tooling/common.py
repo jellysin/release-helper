@@ -26,6 +26,7 @@ HOST_PREFIXES = ("system.", "microsoft.", "jellyfin.", "emby.", "mediabrowser.")
 IMAGE_URL = re.compile(r"https://raw\.githubusercontent\.com/([^/]+/[^/]+)/[0-9a-f]{40}/(.+)")
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".webp")
 DIRECTION_CONTROLS = frozenset("\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069")
+SIGNER_WORKFLOWS = (".github/workflows/release.yml", ".github/workflows/build-signed.yml")
 
 
 class ValidationError(ValueError):

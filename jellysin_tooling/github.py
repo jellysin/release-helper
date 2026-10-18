@@ -45,6 +45,8 @@ class GitHub:
                 with self.opener.open(urllib.request.Request(url, headers=headers), timeout=20) as response:
                     return read_response(response, limit, deadline)
             except urllib.error.HTTPError as exc:
+                # The error holds the response body and socket until closed.
+                exc.close()
                 if (not authenticated or binary) and exc.code in (301, 302, 303, 307, 308):
                     url = urllib.parse.urljoin(url, exc.headers.get("Location", ""))
                     authenticated = False

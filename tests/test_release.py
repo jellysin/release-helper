@@ -137,6 +137,86 @@ class PublicationTests(Workspace):
             )
         runner.assert_not_called()
         self.assertEqual(4, verifier.call_count)
+        for call in verifier.call_args_list:
+            self.assertEqual(".github/workflows/release.yml", call.args[2])
+
+    def test_publish_with_build_signed_signer_workflow(self):
+        release, output = self.plugin()
+        client = FakeGitHub()
+        client.add(FIRST, release, output)
+        runner = Mock()
+        verifier = Mock()
+        with patch("jellysin_tooling.release.exact_tag", return_value=COMMIT):
+            self.assertEqual(
+                release,
+                publish(
+                    client,
+                    output,
+                    FIRST["repository"],
+                    release["tag"],
+                    ".github/workflows/release.yml",
+                    verifier,
+                    runner,
+                    signer_workflow=".github/workflows/build-signed.yml",
+                ),
+            )
+        runner.assert_not_called()
+        self.assertEqual(4, verifier.call_count)
+        for call in verifier.call_args_list:
+            self.assertEqual(".github/workflows/build-signed.yml", call.args[2])
+
+    def test_publish_refuses_unapproved_signer_workflows(self):
+        release, output = self.plugin()
+        client = FakeGitHub()
+        runner = Mock()
+        verifier = Mock()
+        unapproved = (
+            ".github/workflows/Release.yml",
+            ".github/workflows/BUILD-SIGNED.YML",
+            "./.github/workflows/release.yml",
+            "./.github/workflows/build-signed.yml",
+            "other/repo/.github/workflows/release.yml",
+            "evil.yml",
+            ".github/workflows/release.yml ",
+            ".github/workflows/build-signed.yml\n",
+            ".github/workflows/recover-release.yml",
+            "",
+        )
+        for workflow in unapproved:
+            with (
+                self.subTest(workflow=workflow),
+                self.assertRaisesRegex(ValidationError, "Unapproved signer workflow"),
+            ):
+                publish(
+                    client,
+                    output,
+                    FIRST["repository"],
+                    release["tag"],
+                    ".github/workflows/release.yml",
+                    verifier,
+                    runner,
+                    signer_workflow=workflow,
+                )
+        verifier.assert_not_called()
+        runner.assert_not_called()
+
+    def test_publish_refuses_build_signed_as_publisher_workflow(self):
+        release, output = self.plugin()
+        client = FakeGitHub()
+        runner = Mock()
+        verifier = Mock()
+        with self.assertRaisesRegex(ValidationError, "Unapproved publisher workflow"):
+            publish(
+                client,
+                output,
+                FIRST["repository"],
+                release["tag"],
+                ".github/workflows/build-signed.yml",
+                verifier,
+                runner,
+            )
+        verifier.assert_not_called()
+        runner.assert_not_called()
 
     def test_draft_resume_uploads_only_missing_bytes_and_publishes_after_verification(self):
         release, output = self.plugin()
