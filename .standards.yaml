@@ -27,6 +27,8 @@ overrides:
   branch_protection:
     required_approving_reviewers: 1
     review_mode: single_maintainer
+    # Declared at its live value; the forge default is the stricter one.
+    require_extra_approval_for_unattributed_changes: true
 register:
   sources:
     expected: 13
