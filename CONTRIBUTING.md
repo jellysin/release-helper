@@ -89,13 +89,18 @@ published or immutable release with the tag, or the tag on another commit, is a
 conflict that needs a new version. Every write of the command has a test that proves
 the refusal happens first; a new write needs the same proof.
 
-This repository releases itself with these steps. Merging its release PR changes
-files only. A maintainer then dispatches `prepare-release.yml` on `main` with the tag
-and the merged release commit; the run uses the action of that checkout and leaves
-the tag and a draft whose text is the version's changelog section. Publishing that
-draft is the maintainer's own act: read the draft, set `draft` to false on its numeric
-release ID, and read back that the release is published and immutable. The publisher
-does not apply here, since the helper ships no plugin artifacts. Tags `v1.0.0` to
+This repository has one release writer: the merge train. When a person merges the
+release PR, the train's release-please run creates the tag on the merge commit and
+publishes the release, since `release-please-config.json` does not set
+`skip-github-release`. `prepare-release.yml` stays as the fallback for a version the
+train left untagged: dispatched on `main` with the tag and the merged release commit,
+it passes `skip-tagged: 'true'`, so a tag that already names the commit ends the run
+without a write, and a tag on another commit is refused. Only on an untagged version
+does it create the tag and a draft whose text is the version's changelog section;
+publishing that draft is the maintainer's own act: read the draft, set `draft` to
+false on its numeric release ID, and read back that the release is published and
+immutable. The publisher does not apply here, since the helper ships no plugin
+artifacts. Tags `v1.0.0` to
 `v1.0.3` mark the commits that recorded those versions; no release was published for
 them.
 

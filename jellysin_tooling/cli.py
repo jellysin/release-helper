@@ -37,6 +37,7 @@ def parser():
     draft.add_argument("--commit", required=True)
     draft.add_argument("--version-path", default="version.txt")
     draft.add_argument("--changelog-path")
+    draft.add_argument("--skip-tagged", action="store_true")
     update = commands.add_parser("catalog")
     update.add_argument("--manifest", default="manifest.json")
     update.add_argument("--allowlist", default="plugins.json")
@@ -109,14 +110,17 @@ def run(arguments):
         run_server_check(arguments)
         return
     if arguments.command == "prepare":
-        prepare.prepare(
+        draft = prepare.prepare(
             GitHub(),
             arguments.repo,
             arguments.tag,
             arguments.commit,
             arguments.version_path,
             arguments.changelog_path,
+            skip_tagged=arguments.skip_tagged,
         )
+        if draft is None:
+            print(f"{arguments.tag} already names {arguments.commit}; nothing prepared.")
         return
     if arguments.command == "publish":
         release.publish(
