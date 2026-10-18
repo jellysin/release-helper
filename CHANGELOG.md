@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/jellysin/release-helper/compare/v1.2.2...v1.2.3) (2026-10-18)
+
+
+### Bug Fixes
+
+* **publish:** accept the reusable build-signed workflow as signer ([#58](https://github.com/jellysin/release-helper/issues/58)) ([97fe7e4](https://github.com/jellysin/release-helper/commit/97fe7e48c0e231909a4e27b717f09848577bb152))
+
 ## [1.2.2](https://github.com/jellysin/release-helper/compare/v1.2.1...v1.2.2) (2026-10-13)
 
 
