@@ -89,7 +89,9 @@ class PackagingTests(Workspace):
 
 class InputTests(Workspace):
     def test_invalid_versions(self):
-        for value in (None, "v1.2.3", "1.2", "1.2.3.0", "01.2.3", "1.2.3-beta", "1.2.65535", "1.2.3\n"):
+        # packaging 26.3 parses 1.2.beta, v1.2.3, 01.2.3 and 1.2.3-rc.1 as PEP 440 versions; semver() refuses them.
+        planted = ("1.2.beta", "v1.2.3", "01.2.3", "1.2.3-rc.1")
+        for value in (None, *planted, "1.2", "1.2.3.0", "1.2.3-beta", "1.2.65535", "1.2.3\n"):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 semver(value)
 
