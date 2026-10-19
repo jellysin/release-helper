@@ -3,7 +3,7 @@
 from jellysin_tooling.common import ValidationError
 from jellysin_tooling.policy import check_repository
 from tests.fixtures import Workspace
-from tests.test_tool_name import message
+from tests.test_tool_name import ROOT, message
 
 
 class PolicyTests(Workspace):
@@ -24,6 +24,9 @@ class PolicyTests(Workspace):
                 check_repository(self.root)
         workflow.write_text("- uses: actions/checkout@" + "a" * 40 + "\n- uses: ./local\n")
         check_repository(self.root)
+
+    def test_repository_root_policy_passes(self):
+        check_repository(ROOT)
 
     def test_function_and_privileged_event_limits(self):
         workflow = self.prepare()

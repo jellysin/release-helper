@@ -4,6 +4,7 @@ import ast
 import re
 from pathlib import Path
 
+from . import releaseconfig
 from .common import read_json, require
 
 
@@ -28,6 +29,7 @@ def check_repository(root):
         # Only conventional source files; do not traverse generated bin/obj trees.
         for path in (root / folder).glob("*.py"):
             check_python_functions(path)
+    releaseconfig.check(root)
 
 
 def check_python_functions(path):

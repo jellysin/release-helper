@@ -1,5 +1,5 @@
 name: Check repository policy
-description: Validate repository documents, immutable Action pins, and optionally a Jellyfin plugin repository.
+description: Validate repository documents, immutable Action pins, release-please configuration, and optionally a Jellyfin plugin repository. Caller must check out with fetch-depth 0 when last-release-sha is set.
 inputs:
   directory:
     description: Repository directory.
