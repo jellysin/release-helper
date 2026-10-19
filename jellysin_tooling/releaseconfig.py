@@ -20,6 +20,7 @@ MAX_DEPTH = 32
 class UnsupportedSchemaError(ValidationError):
     """A schema construct this validator cannot check; anyOf never treats it as a mismatch."""
 
+
 ALLOWED_SCHEMA_KEYWORDS = frozenset(
     {
         "$ref",
