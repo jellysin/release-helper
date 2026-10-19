@@ -45,6 +45,23 @@ class ReleaseWorkflowShapeTests(unittest.TestCase):
         all_uses = re.findall(r"(?m)^\s*(?:-\s*)?uses:\s*(\S+)", self.release_text)
         self.assertEqual(all_uses[-1], "./actions/publish")
 
+    def test_publish_copies_bundles_after_verify_step(self):
+        publish_job = self.release_data["jobs"]["publish"]
+        steps = publish_job["steps"]
+        step_runs = []
+        for i, step in enumerate(steps):
+            if "run" in step:
+                step_runs.append((i, step["run"]))
+
+        verify_indices = [i for i, r in step_runs if "cosign verify-blob" in r]
+        self.assertEqual(len(verify_indices), 1, "verify step must exist in publish job")
+
+        copy_indices = [i for i, r in step_runs if "signatures/*.sigstore.json" in r and "dist" in r]
+        self.assertEqual(len(copy_indices), 1, "copy bundles step must exist in publish job")
+
+        self.assertLess(verify_indices[0], copy_indices[0])
+        self.assertLess(copy_indices[0], len(steps) - 1)
+
     def test_build_signed_step_order_and_artifact_upload(self):
         steps = self.build_data["jobs"]["build"]["steps"]
         step_runs = []

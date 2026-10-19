@@ -1,12 +1,26 @@
 """Exact-tag, resumable publication: upload missing bytes, never replace assets."""
 
+import base64
+import hashlib
 import os
 from pathlib import Path
 from urllib.parse import quote
 
 from . import source, spdx
 from .catalog import release_assets, validate_archive, validate_release
-from .common import MAX_ASSET, SHA, SIGNER_WORKFLOWS, decode_json, digest, read_json, repository, require, semver
+from .common import (
+    MAX_ASSET,
+    MAX_BUNDLE,
+    MAX_FILES,
+    SHA,
+    SIGNER_WORKFLOWS,
+    decode_json,
+    digest,
+    read_json,
+    repository,
+    require,
+    semver,
+)
 from .github import command, verify_attestation
 
 
@@ -210,6 +224,53 @@ def source_artifacts(client, directory, repo, tag, commit):
     return source.local_artifacts(directory, release)
 
 
+def validate_bundle(bundle_path, bundle_name, asset_bytes):
+    require(bundle_path.exists() or bundle_path.is_symlink(), f"Missing signature bundle: {bundle_name}")
+    require(not bundle_path.is_symlink(), f"Symlink signature bundle refused: {bundle_name}")
+    require(bundle_path.is_file(), f"Missing or unsafe signature bundle: {bundle_name}")
+    require(bundle_path.stat().st_size <= MAX_BUNDLE, f"Signature bundle exceeds size limit: {bundle_name}")
+    bundle_bytes = bundle_path.read_bytes()
+    bundle = decode_json(bundle_bytes, limit=MAX_BUNDLE)
+    require(isinstance(bundle, dict), f"Signature bundle must be a JSON object: {bundle_name}")
+    require(
+        bundle.get("mediaType") == "application/vnd.dev.sigstore.bundle.v0.3+json",
+        f"Invalid signature bundle mediaType: {bundle_name}",
+    )
+    message_sig = bundle.get("messageSignature")
+    require(isinstance(message_sig, dict), f"Invalid signature bundle messageSignature: {bundle_name}")
+    message_digest = message_sig.get("messageDigest")
+    require(isinstance(message_digest, dict), f"Invalid signature bundle messageDigest: {bundle_name}")
+    require(
+        message_digest.get("algorithm") == "SHA2_256",
+        f"Invalid signature bundle algorithm: {bundle_name}",
+    )
+    expected_digest = base64.b64encode(hashlib.sha256(asset_bytes).digest()).decode("ascii")
+    require(
+        message_digest.get("digest") == expected_digest,
+        f"Signature bundle digest mismatch: {bundle_name}",
+    )
+    return bundle_bytes
+
+
+def validate_bundles(directory, files):
+    root = Path(directory).resolve(strict=True)
+    suffix = ".sigstore.json"
+    entries = []
+    for item in root.iterdir():
+        entries.append(item)
+        require(len(entries) <= MAX_FILES, "Release directory holds too many files")
+    for item in sorted(entries):
+        if item.name.endswith(suffix):
+            asset_name = item.name[: -len(suffix)]
+            require(asset_name in files, f"Unexpected signature bundle: {item.name}")
+    bundles = {}
+    for asset_name in sorted(files):
+        bundle_name = f"{asset_name}{suffix}"
+        bundle_path = root / bundle_name
+        bundles[bundle_name] = validate_bundle(bundle_path, bundle_name, files[asset_name])
+    return bundles
+
+
 def publish(
     client,
     directory,
@@ -235,6 +296,8 @@ def publish(
         files = source_artifacts(client, directory, repo, tag, commit)
     for name in sorted(files):
         verifier(Path(directory) / name, repo, signer_workflow, commit, tag)
+    if signer_workflow == ".github/workflows/build-signed.yml":
+        files = {**files, **validate_bundles(directory, files)}
     found = find_release(client, repo, tag)
     release_id = found["id"]
     remote = read_release(client, repo, tag, release_id)
