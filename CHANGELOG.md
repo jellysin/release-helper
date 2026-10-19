@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/jellysin/release-helper/compare/v1.4.1...v1.4.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **release:** pass verify on a read-only token and fit the source tree ([#80](https://github.com/jellysin/release-helper/issues/80)) ([955dc1b](https://github.com/jellysin/release-helper/commit/955dc1bf9d25281adc94b199ac4a7c1866bc8e65))
+
 ## [1.4.1](https://github.com/jellysin/release-helper/compare/v1.4.0...v1.4.1) (2026-10-19)
 
 
