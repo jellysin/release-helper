@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import catalog, changelog, fixture, inventory, package, policy, prepare, release, servercheck
+from . import catalog, changelog, fixture, inventory, package, policy, prepare, release, servercheck, source
 from .common import TOOL_NAME, ValidationError, metadata, read_json, require
 from .github import GitHub, command
 
@@ -31,6 +31,11 @@ def parser():
     publish.add_argument("--workflow", default=".github/workflows/release.yml")
     publish.add_argument("--signer-workflow", default=".github/workflows/release.yml")
     publish.add_argument("--verified-tag-recovery", action="store_true")
+    publish.add_argument("--kind", default="plugin")
+    pkg_source = commands.add_parser("package-source")
+    pkg_source.add_argument("--repo", required=True)
+    pkg_source.add_argument("--tag", required=True)
+    pkg_source.add_argument("--output-directory", default="dist")
     draft = commands.add_parser("prepare")
     draft.add_argument("--repo", required=True)
     draft.add_argument("--tag", required=True)
@@ -49,9 +54,9 @@ def parser():
     validate.add_argument("--manifest", default="manifest.json")
     validate.add_argument("--allowlist", default="plugins.json")
     server = commands.add_parser("server-check")
-    source = server.add_mutually_exclusive_group(required=True)
-    source.add_argument("--manifest")
-    source.add_argument("--emit-fixture", nargs=2, metavar=("KIND", "PATH"))
+    server_source = server.add_mutually_exclusive_group(required=True)
+    server_source.add_argument("--manifest")
+    server_source.add_argument("--emit-fixture", nargs=2, metavar=("KIND", "PATH"))
     server.add_argument("--image")
     check = commands.add_parser("check-policy")
     check.add_argument("--directory", default=".")
@@ -95,6 +100,23 @@ def run_package(arguments):
             stream.write(f"directory={Path(arguments.output_directory).resolve()}\n")
 
 
+def run_package_source(arguments):
+    commit = release.exact_tag(arguments.tag)
+    created = command(["git", "show", "-s", "--format=%cI", commit])
+    result = source.build(
+        arguments.repo,
+        arguments.tag,
+        commit,
+        created,
+        arguments.output_directory,
+    )
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with Path(output).open("a", encoding="utf-8") as stream:
+            stream.write(f"archive={Path(arguments.output_directory).resolve() / result['archive']['name']}\n")
+            stream.write(f"directory={Path(arguments.output_directory).resolve()}\n")
+
+
 def run_server_check(arguments):
     if arguments.emit_fixture:
         require(arguments.image is None, "A fixture is written without a server image")
@@ -103,44 +125,34 @@ def run_server_check(arguments):
     servercheck.check(arguments.manifest, arguments.image)
 
 
-def run(arguments):
-    if arguments.command == "check-policy":
-        policy.check_repository(arguments.directory)
-        return
-    if arguments.command == "package":
-        run_package(arguments)
-        return
-    if arguments.command == "server-check":
-        run_server_check(arguments)
-        return
-    if arguments.command == "catalog-check":
-        print(f"{TOOL_NAME}: {fixture.NOT_ATTESTED}; no manifest is written", flush=True)
-        print(fixture.check(arguments.fixture, catalog.allowlist(read_json(arguments.allowlist))))
-        return
-    if arguments.command == "prepare":
-        draft = prepare.prepare(
-            GitHub(),
-            arguments.repo,
-            arguments.tag,
-            arguments.commit,
-            arguments.version_path,
-            arguments.changelog_path,
-            skip_tagged=arguments.skip_tagged,
-        )
-        if draft is None:
-            print(f"{arguments.tag} already names {arguments.commit}; nothing prepared.")
-        return
-    if arguments.command == "publish":
-        release.publish(
-            GitHub(),
-            arguments.directory,
-            arguments.repo,
-            arguments.tag,
-            arguments.workflow,
-            signer_workflow=arguments.signer_workflow,
-            verified_tag_recovery=arguments.verified_tag_recovery,
-        )
-        return
+def run_prepare(arguments):
+    draft = prepare.prepare(
+        GitHub(),
+        arguments.repo,
+        arguments.tag,
+        arguments.commit,
+        arguments.version_path,
+        arguments.changelog_path,
+        skip_tagged=arguments.skip_tagged,
+    )
+    if draft is None:
+        print(f"{arguments.tag} already names {arguments.commit}; nothing prepared.")
+
+
+def run_publish(arguments):
+    release.publish(
+        GitHub(),
+        arguments.directory,
+        arguments.repo,
+        arguments.tag,
+        arguments.workflow,
+        signer_workflow=arguments.signer_workflow,
+        verified_tag_recovery=arguments.verified_tag_recovery,
+        kind=arguments.kind,
+    )
+
+
+def run_catalog(arguments):
     current = catalog.validate_manifest(read_json(arguments.manifest))
     approved = catalog.allowlist(read_json(arguments.allowlist))
     require(
@@ -157,6 +169,32 @@ def run(arguments):
     if arguments.command == "catalog":
         merged = catalog.collect(GitHub(), approved, current)
         catalog.update(arguments.manifest, current, merged)
+
+
+def run(arguments):
+    if arguments.command == "check-policy":
+        policy.check_repository(arguments.directory)
+        return
+    if arguments.command == "package":
+        run_package(arguments)
+        return
+    if arguments.command == "package-source":
+        run_package_source(arguments)
+        return
+    if arguments.command == "server-check":
+        run_server_check(arguments)
+        return
+    if arguments.command == "catalog-check":
+        print(f"{TOOL_NAME}: {fixture.NOT_ATTESTED}; no manifest is written", flush=True)
+        print(fixture.check(arguments.fixture, catalog.allowlist(read_json(arguments.allowlist))))
+        return
+    if arguments.command == "prepare":
+        run_prepare(arguments)
+        return
+    if arguments.command == "publish":
+        run_publish(arguments)
+        return
+    run_catalog(arguments)
 
 
 def main():

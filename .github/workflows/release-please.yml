@@ -1,6 +1,10 @@
 name: Shared release PR preparation
 on:
   workflow_call:
+    inputs:
+      prepare-release:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -44,6 +48,7 @@ jobs:
       - name: Mark merged release PRs whose tag names their merge commit
         env:
           GH_TOKEN: ${{ github.token }}
+          PREPARE_RELEASE: ${{ inputs.prepare-release }}
         run: |
           python3 - <<'PY'
           import json
@@ -65,10 +70,12 @@ jobs:
               refs = gh(f'repos/{REPO}/git/matching-refs/tags/{tag}')
               if not isinstance(refs, list) or len(refs) >= 30:
                   raise SystemExit('Unexpected tag listing')
-              target = next((ref['object'] for ref in refs if ref['ref'] == 'refs/tags/' + tag), {})
+              target = next((ref['object'] for ref in refs if ref['ref'] == 'refs/tags/' + tag), None)
+              if target is None:
+                  return None, False
               if target.get('type') == 'tag':
                   target = gh(f"repos/{REPO}/git/tags/{target['sha']}")['object']
-              return target['sha'] if target.get('type') == 'commit' else None
+              return (target['sha'] if target.get('type') == 'commit' else None), True
           def version_tag(pull):
               title = TITLE.fullmatch(pull['title'])
               ours = pull['head']['ref'].startswith('release-please--branches--main') and pull['base']['ref'] == 'main'
@@ -83,13 +90,19 @@ jobs:
           for number in numbers:
               pull = gh(f'repos/{REPO}/pulls/{number}')
               tag = version_tag(pull)
-              if tag is None or tagged_commit(tag) != pull['merge_commit_sha']:
+              commit, exists = tagged_commit(tag) if tag else (None, False)
+              if exists and commit == pull['merge_commit_sha']:
+                  # Add first: a failure between the two writes leaves the PR pending for the next run.
+                  gh('--method', 'POST', f'repos/{REPO}/issues/{number}/labels', '--raw-field', f'labels[]={TAGGED}')
+                  gh('--method', 'DELETE', f'repos/{REPO}/issues/{number}/labels/{quote(PENDING)}')
+                  print(f'#{number}: {tag} names its merge commit, marked tagged')
+              elif tag and not exists and os.environ.get('PREPARE_RELEASE') == 'true':
+                  done = subprocess.run(['gh', 'workflow', 'run', 'prepare-release.yml', '--repo', REPO, '--ref', 'main', '-f', f'tag={tag}', '-f', f"commit={pull['merge_commit_sha']}"], capture_output=True, check=False, timeout=60)
+                  if done.returncode:
+                      raise SystemExit('Dispatch prepare-release failed')
+                  print(f'#{number}: {tag} untagged, dispatched prepare-release')
+              else:
                   print(f'#{number}: label stays, no version tag names its merge commit')
-                  continue
-              # Add first: a failure between the two writes leaves the PR pending for the next run.
-              gh('--method', 'POST', f'repos/{REPO}/issues/{number}/labels', '--raw-field', f'labels[]={TAGGED}')
-              gh('--method', 'DELETE', f'repos/{REPO}/issues/{number}/labels/{quote(PENDING)}')
-              print(f'#{number}: {tag} names its merge commit, marked tagged')
           PY
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release

@@ -6,8 +6,9 @@
 # python. The pre-push gate runs in a temporary worktree and passes the checkout's DEV_VENV.
 DEV_VENV ?= .venv
 PYTHON := $(DEV_VENV)/bin/python
+DIST_PYTHON ?= python3
 ACTIONLINT := actionlint
-.PHONY: verify-all bootstrap python-env compile-context compile-context-verify caveman-sources audit lint policy test workflows
+.PHONY: verify-all bootstrap python-env compile-context compile-context-verify caveman-sources audit lint policy test workflows dist
 
 verify-all: compile-context-verify caveman-sources audit lint policy test workflows
 
@@ -48,3 +49,6 @@ test: python-env
 
 workflows:
 	@$(ACTIONLINT)
+
+dist:
+	$(DIST_PYTHON) tools.py package-source --repo "$(RELEASE_REPO)" --tag "$(RELEASE_TAG)" --output-directory dist

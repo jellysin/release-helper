@@ -101,7 +101,54 @@ def document(info, version, commit, created, files, inventory=None):
     return result
 
 
+def source_document(repo, version, commit, created, files, license_declared="NOASSERTION"):
+    entries = file_entries(files)
+    repo_name = repo.split("/")[1]
+    root = {
+        "SPDXID": "SPDXRef-Source",
+        "name": repo_name,
+        "versionInfo": version,
+        "downloadLocation": f"https://github.com/{repo}/releases/tag/v{version}",
+        "filesAnalyzed": True,
+        "licenseDeclared": license_declared,
+        "packageVerificationCode": {
+            "packageVerificationCodeValue": digest(
+                "".join(sorted(digest(data, "sha1") for data in files.values())).encode(), "sha1"
+            )
+        },
+    }
+    return {
+        "spdxVersion": "SPDX-2.3",
+        "dataLicense": "CC0-1.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "name": f"{repo_name} {version}",
+        "documentNamespace": f"https://github.com/{repo}/sbom/{version}/{commit}",
+        "creationInfo": {"created": created, "creators": [f"Tool: {TOOL_NAME}-1"]},
+        "packages": [root],
+        "files": entries,
+        "relationships": [
+            relationship("SPDXRef-DOCUMENT", "DESCRIBES", "SPDXRef-Source"),
+            *[relationship("SPDXRef-Source", "CONTAINS", item["SPDXID"]) for item in entries],
+        ],
+    }
+
+
+def validate_source(value, release, files, license_declared="NOASSERTION"):
+    expected = source_document(
+        release["repository"],
+        release["semver"],
+        release["commit"],
+        release["timestamp"],
+        files,
+        license_declared=license_declared,
+    )
+    require(value == expected, "SBOM differs from release identity, files or checksums")
+
+
 def validate(value, release, files):
+    if release.get("kind") == "source":
+        validate_source(value, release, files)
+        return
     expected = document(
         release["plugin"],
         release["semver"],

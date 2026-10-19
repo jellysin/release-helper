@@ -1,0 +1,36 @@
+name: Package source release
+description: Build a deterministic source tarball, release metadata, checksums, and SPDX SBOM.
+inputs:
+  tag:
+    description: Exact checked-out release tag.
+    required: true
+  output-directory:
+    description: Release artifact directory.
+    default: dist
+  repo:
+    description: Repository name (owner/repo); defaults to GITHUB_REPOSITORY when empty.
+    default: ''
+outputs:
+  archive:
+    description: Absolute path to the source tarball.
+    value: ${{ steps.package.outputs.archive }}
+  directory:
+    description: Absolute release artifact directory.
+    value: ${{ steps.package.outputs.directory }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version-file: ${{ github.action_path }}/../../.python-version
+    - id: package
+      shell: bash
+      env:
+        TOOL_ROOT: ${{ github.action_path }}/../..
+        RELEASE_TAG: ${{ inputs.tag }}
+        OUTPUT_DIRECTORY: ${{ inputs.output-directory }}
+        REPOSITORY: ${{ inputs.repo }}
+      run: |
+        repo="${REPOSITORY:-$GITHUB_REPOSITORY}"
+        args=(package-source --repo "$repo" --tag "$RELEASE_TAG" --output-directory "$OUTPUT_DIRECTORY")
+        python "$TOOL_ROOT/tools.py" "${args[@]}"

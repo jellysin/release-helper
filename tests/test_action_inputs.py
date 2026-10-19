@@ -82,6 +82,8 @@ class RecordedInputTests(unittest.TestCase):
                 REPOSITORY,
                 "--signer-workflow",
                 ".github/workflows/release.yml",
+                "--kind",
+                "plugin",
             ],
         )
         self.assertEqual(token, "synthetic-token")
@@ -91,7 +93,46 @@ class RecordedInputTests(unittest.TestCase):
             {**inputs, "signer-workflow": ".github/workflows/build-signed.yml"},
             environment,
         )
-        self.assertEqual(argv[-2:], ["--signer-workflow", ".github/workflows/build-signed.yml"])
+        self.assertEqual(argv[8:10], ["--signer-workflow", ".github/workflows/build-signed.yml"])
+
+    def test_publish_passes_source_kind(self):
+        environment = {"GITHUB_REPOSITORY": REPOSITORY}
+        inputs = {"directory": "artifacts", "tag": "v1.2.3", "token": "synthetic-token", "kind": "source"}
+        argv, _ = self.argv("publish", inputs, environment)
+        self.assertEqual(argv[-2:], ["--kind", "source"])
+
+    def test_publish_refuses_any_other_kind_value_before_running_the_tool(self):
+        for value in ("Plugin", "SOURCE", "binary", "", "plugin "):
+            with self.subTest(value=value):
+                result = self.runner.run("publish", {"tag": "v1.2.3", "kind": value})
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr.decode(), "Invalid kind input\n")
+        self.assertEqual(self.runner.calls(), [])
+
+    def test_package_source_passes_all_inputs(self):
+        inputs = {"tag": "v1.2.3", "output-directory": "out", "repo": "jellysin/release-helper"}
+        argv, _ = self.argv("package-source", inputs)
+        self.assertEqual(
+            argv,
+            [
+                TOOLS,
+                "package-source",
+                "--repo",
+                "jellysin/release-helper",
+                "--tag",
+                "v1.2.3",
+                "--output-directory",
+                "out",
+            ],
+        )
+
+    def test_package_source_with_only_required_input_uses_defaults(self):
+        environment = {"GITHUB_REPOSITORY": REPOSITORY}
+        argv, _ = self.argv("package-source", {"tag": "v1.2.3"}, environment)
+        self.assertEqual(
+            argv,
+            [TOOLS, "package-source", "--repo", REPOSITORY, "--tag", "v1.2.3", "--output-directory", "dist"],
+        )
 
     def test_publish_adds_recovery_only_for_true(self):
         environment = {"GITHUB_REPOSITORY": REPOSITORY}

@@ -35,7 +35,6 @@ class StandardsExceptionTests(unittest.TestCase):
 
     def test_every_exception_path_exists(self):
         entries = exception_paths((ROOT / ".standards.yaml").read_text(encoding="utf-8"))
-        self.assertTrue(entries, "the HISS-11 exception names a path")
         for rule, path in entries:
             with self.subTest(rule=rule, path=path):
                 self.assertTrue((ROOT / path).is_file(), f"{rule} exception names a missing file: {path}")

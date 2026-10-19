@@ -7,6 +7,7 @@ from spdx_tools.spdx.parser.error import SPDXParsingError
 from spdx_tools.spdx.parser.jsonlikedict.json_like_dict_parser import JsonLikeDictParser
 from spdx_tools.spdx.validation.document_validator import validate_full_spdx_document
 
+from jellysin_tooling import spdx
 from jellysin_tooling.catalog import verified_release
 from jellysin_tooling.common import ValidationError, decode_json, digest, json_bytes
 from jellysin_tooling.inventory import from_restore
@@ -46,6 +47,18 @@ class SpdxTests(Workspace):
             root["packageVerificationCode"]["packageVerificationCodeValue"],
         )
         local_artifacts(output, release)
+
+    def test_spdx_validate_source_kind(self):
+        files = {"README.md": b"# Hello\n"}
+        doc = spdx.source_document("jellysin/release-helper", "1.0.0", COMMIT, CREATED, files)
+        release = {
+            "kind": "source",
+            "repository": "jellysin/release-helper",
+            "semver": "1.0.0",
+            "commit": COMMIT,
+            "timestamp": CREATED,
+        }
+        spdx.validate(doc, release, files)
 
     def test_external_dependency_graph_is_reproducible_for_independent_plugins(self):
         paths, _ = restore_files(self.root)
@@ -120,3 +133,7 @@ class UpstreamSpdxValidatorTests(Workspace):
         del document["documentNamespace"]
         messages = self.upstream_messages(document)
         self.assertTrue(any("namespace" in message for message in messages), messages)
+
+    def test_generated_source_document_passes_spdx_tools_validation(self):
+        doc = spdx.source_document("jellysin/release-helper", "1.0.0", COMMIT, CREATED, {"README.md": b"# Hello\n"})
+        self.assertEqual([], self.upstream_messages(doc))

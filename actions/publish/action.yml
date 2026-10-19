@@ -16,6 +16,9 @@ inputs:
   signer-workflow:
     description: Approved workflow that attested the release artifacts.
     default: .github/workflows/release.yml
+  kind:
+    description: Release kind (plugin or source).
+    default: plugin
 runs:
   using: composite
   steps:
@@ -30,6 +33,7 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         VERIFIED_TAG_RECOVERY: ${{ inputs.verified-tag-recovery }}
         SIGNER_WORKFLOW: ${{ inputs.signer-workflow }}
+        RELEASE_KIND: ${{ inputs.kind }}
       run: |
         recovery=()
         case "$VERIFIED_TAG_RECOVERY" in
@@ -37,4 +41,8 @@ runs:
           false) ;;
           *) echo "Invalid verified-tag-recovery input" >&2; exit 1 ;;
         esac
-        python "$TOOL_ROOT/tools.py" publish --directory "$RELEASE_DIRECTORY" --tag "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW" "${recovery[@]}"
+        case "$RELEASE_KIND" in
+          plugin|source) ;;
+          *) echo "Invalid kind input" >&2; exit 1 ;;
+        esac
+        python "$TOOL_ROOT/tools.py" publish --directory "$RELEASE_DIRECTORY" --tag "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER_WORKFLOW" --kind "$RELEASE_KIND" "${recovery[@]}"

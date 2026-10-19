@@ -1,0 +1,65 @@
+name: Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/ci.yml
+  build:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build-signed.yml
+    with:
+      tag: ${{ github.ref_name }}
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      attestations: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Verify signatures and attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for file in dist/*; do
+            if [ -f "$file" ]; then
+              name="$(basename "$file")"
+              cosign verify-blob \
+                --bundle "signatures/${name}.sigstore.json" \
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+                --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/build-signed.yml@${GITHUB_REF}" \
+                "$file"
+              gh attestation verify "$file" \
+                --repo "$GITHUB_REPOSITORY" \
+                --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build-signed.yml"
+            fi
+          done
+      - uses: ./actions/publish
+        with:
+          directory: dist
+          tag: ${{ github.ref_name }}
+          token: ${{ github.token }}
+          kind: source
+          signer-workflow: .github/workflows/build-signed.yml

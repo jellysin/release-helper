@@ -38,10 +38,14 @@ class PublishCommandTests(Workspace):
             ({"tag": "v1.0"}, (), "Expected stable x.y.z version"),
             ({"tag": "v1.0.0-rc.1"}, (), "Expected stable x.y.z version"),
             ({"tag": "v65535.0.0"}, (), "Version exceeds assembly limit"),
+            ({}, ("--kind", "binary"), "Unknown release kind: binary"),
         )
         for options, extra, reason in cases:
             with self.subTest(options=options, extra=extra):
                 self.assert_refused_before_any_call(self.publish(*extra, **options), reason)
+
+    def test_unknown_kind_is_refused_before_any_call(self):
+        self.assert_refused_before_any_call(self.publish("--kind", "unknown"), "Unknown release kind: unknown")
 
     def test_signer_workflow_is_forwarded_to_release_publish(self):
         with patch("jellysin_tooling.cli.release.publish") as publish:
