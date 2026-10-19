@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.4.2](https://github.com/jellysin/release-helper/compare/v1.4.1...v1.4.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **release:** pass verify on a read-only token and fit the source tree ([#80](https://github.com/jellysin/release-helper/issues/80)) ([955dc1b](https://github.com/jellysin/release-helper/commit/955dc1bf9d25281adc94b199ac4a7c1866bc8e65))
+
+## [1.4.1](https://github.com/jellysin/release-helper/compare/v1.4.0...v1.4.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **ci:** let the release run pass verify while its own tag holds a draft ([#78](https://github.com/jellysin/release-helper/issues/78)) ([f034577](https://github.com/jellysin/release-helper/commit/f034577886a109e8625f530ef8398f8be1a89800))
+
+## [1.4.0](https://github.com/jellysin/release-helper/compare/v1.3.1...v1.4.0) (2026-10-19)
+
+
+### Features
+
+* **release:** sign and attest this repository's own source releases ([#76](https://github.com/jellysin/release-helper/issues/76)) ([1bf3c86](https://github.com/jellysin/release-helper/commit/1bf3c86f593c7114e0e796e206c8b450488a5582)), closes [#73](https://github.com/jellysin/release-helper/issues/73)
+
 ## [1.3.1](https://github.com/jellysin/release-helper/compare/v1.3.0...v1.3.1) (2026-10-19)
 
 

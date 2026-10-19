@@ -8,7 +8,6 @@ from pathlib import Path
 from . import spdx
 from .common import (
     MAX_ASSET,
-    MAX_FILES,
     SHA,
     ValidationError,
     atomic_write,
@@ -22,6 +21,9 @@ from .common import (
     timestamp,
 )
 from .github import command_bytes
+
+# A source archive holds the whole tracked tree, not the few files of a plugin ZIP (MAX_FILES).
+MAX_SOURCE_MEMBERS = 2048
 
 
 def archive_bytes(commit, prefix, cwd=None):
@@ -39,7 +41,7 @@ def members(data, prefix=None):
     try:
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
             entries = tar.getmembers()
-            require(len(entries) <= MAX_FILES, "Too many archive members")
+            require(len(entries) <= MAX_SOURCE_MEMBERS, "Too many archive members")
             require(sum(entry.size for entry in entries) <= MAX_ASSET, "Archive contents exceed asset limit")
             if prefix is None:
                 require(len(entries) > 0, "Empty archive")
