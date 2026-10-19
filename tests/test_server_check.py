@@ -6,7 +6,9 @@ import json
 import re
 import secrets
 import signal
+import socket
 import threading
+import time
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -568,6 +570,29 @@ class ServerTests(ServerCheckCase):
         with self.assertRaises(ValidationError) as caught:
             servercheck.Server(closed.port).call("GET", "/System/Info/Public")
         self.assertEqual(str(caught.exception), "Server request failed or timed out")
+
+    def test_unresponsive_endpoint_times_out_with_bounded_error(self):
+        listener = socket.create_server(("127.0.0.1", 0))
+        self.addCleanup(listener.close)
+        port = listener.getsockname()[1]
+        recorded = []
+        real_connection = servercheck.http.client.HTTPConnection
+
+        def fast_connection(*args, **kwargs):
+            recorded.append(kwargs.get("timeout"))
+            kwargs["timeout"] = 0.2
+            return real_connection(*args, **kwargs)
+
+        start = time.monotonic()
+        with (
+            patch("jellysin_tooling.servercheck.http.client.HTTPConnection", side_effect=fast_connection),
+            self.assertRaises(ValidationError) as caught,
+        ):
+            servercheck.Server(port).call("GET", "/System/Info/Public")
+        duration = time.monotonic() - start
+        self.assertEqual(str(caught.exception), "Server request failed or timed out")
+        self.assertEqual(recorded, [20])
+        self.assertLess(duration, 5.0)
 
     def test_oversized_answer_is_refused(self):
         with patch.object(servercheck, "MAX_JSON", 8), self.assertRaisesRegex(ValidationError, "size limit"):
