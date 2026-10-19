@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import catalog, changelog, inventory, package, policy, prepare, release, servercheck
+from . import catalog, changelog, fixture, inventory, package, policy, prepare, release, servercheck
 from .common import TOOL_NAME, ValidationError, metadata, read_json, require
 from .github import GitHub, command
 
@@ -41,6 +41,10 @@ def parser():
     update = commands.add_parser("catalog")
     update.add_argument("--manifest", default="manifest.json")
     update.add_argument("--allowlist", default="plugins.json")
+    # A fixture run only refuses or passes: it reads no manifest and has no output path.
+    fixture_check = commands.add_parser("catalog-check")
+    fixture_check.add_argument("--fixture", required=True)
+    fixture_check.add_argument("--allowlist", default="plugins.json")
     validate = commands.add_parser("validate-catalog")
     validate.add_argument("--manifest", default="manifest.json")
     validate.add_argument("--allowlist", default="plugins.json")
@@ -108,6 +112,10 @@ def run(arguments):
         return
     if arguments.command == "server-check":
         run_server_check(arguments)
+        return
+    if arguments.command == "catalog-check":
+        print(f"{TOOL_NAME}: {fixture.NOT_ATTESTED}; no manifest is written", flush=True)
+        print(fixture.check(arguments.fixture, catalog.allowlist(read_json(arguments.allowlist))))
         return
     if arguments.command == "prepare":
         draft = prepare.prepare(

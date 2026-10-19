@@ -276,6 +276,14 @@ leave the plugin repository unchanged; resolve the source problem and rerun. Alr
 versions are not re-downloaded each poll; source repositories must enable immutable
 releases. Plugin repository changes go through PRs.
 
+`catalog-check --fixture <directory> [--allowlist plugins.json]` runs one local
+release (`release.json`, `checksums.txt`, `sbom.spdx.json` and the plugin ZIP, at most
+32 regular files) through the same metadata, checksum, ZIP and SBOM checks as
+`catalog`. A planted defect gives the refusal line and exit status 1 that `catalog`
+gives for the same bytes. The fixture has no attestation, so the command skips that
+check and says `attestation NOT checked` on every run: a pass is not a provenance
+proof. It reads no manifest and writes no file, and `actions/catalog` never runs it.
+
 Publication can resume missing draft uploads. GitHub may leave an empty `starter`
 asset after an upload failure; recovery removes it only when its name is expected,
 its size is exactly zero, existing uploaded bytes match, and a fresh API read still
