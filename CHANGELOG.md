@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/jellysin/release-helper/compare/v1.3.1...v1.4.0) (2026-10-19)
+
+
+### Features
+
+* **release:** sign and attest this repository's own source releases ([#76](https://github.com/jellysin/release-helper/issues/76)) ([1bf3c86](https://github.com/jellysin/release-helper/commit/1bf3c86f593c7114e0e796e206c8b450488a5582)), closes [#73](https://github.com/jellysin/release-helper/issues/73)
+
 ## [1.3.1](https://github.com/jellysin/release-helper/compare/v1.3.0...v1.3.1) (2026-10-19)
 
 
