@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/jellysin/release-helper/compare/v1.5.0...v1.6.0) (2026-10-19)
+
+
+### Features
+
+* **check:** derive milestone titles from the release-please manifest ([#85](https://github.com/jellysin/release-helper/issues/85)) ([dd1bc86](https://github.com/jellysin/release-helper/commit/dd1bc868723dd8b74eb3663ed2d17b98bc40993f))
+
 ## [1.5.0](https://github.com/jellysin/release-helper/compare/v1.4.2...v1.5.0) (2026-10-19)
 
 
