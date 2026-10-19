@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/jellysin/release-helper/compare/v1.3.0...v1.3.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **catalog:** name a malformed GUID instead of a generic ValueError ([#69](https://github.com/jellysin/release-helper/issues/69)) ([965bbb0](https://github.com/jellysin/release-helper/commit/965bbb084c8382c9015738427fdb0a64a1fec130))
+
 ## [1.3.0](https://github.com/jellysin/release-helper/compare/v1.2.3...v1.3.0) (2026-10-19)
 
 
