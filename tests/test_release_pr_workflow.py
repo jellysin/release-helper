@@ -256,6 +256,41 @@ class ReleaseLabelTests(StepCase):
         self.failed(state, "Release label request failed")
         self.assertEqual([], state["writes"])
 
+    def test_dispatches_prepare_release_for_pending_merged_pr_without_tag(self):
+        state = forge([pull()], {})
+        said = self.passed(state, PREPARE_RELEASE="true")
+        expected_call = [
+            "workflow",
+            "run",
+            "prepare-release.yml",
+            "--repo",
+            REPO,
+            "--ref",
+            "main",
+            "-f",
+            "tag=v1.2.3",
+            "-f",
+            f"commit={MERGE}",
+        ]
+        self.assertIn(expected_call, state["calls"])
+        self.assertEqual(["#7: v1.2.3 untagged, dispatched prepare-release"], said)
+        self.assertEqual([PENDING], self.labels(state))
+
+    def test_does_not_dispatch_when_tag_exists(self):
+        state = forge([pull()], {"v1.2.3": lightweight()})
+        self.passed(state, PREPARE_RELEASE="true")
+        workflow_runs = [c for c in state["calls"] if c[:2] == ["workflow", "run"]]
+        self.assertEqual([], workflow_runs)
+        self.assertEqual([TAGGED], self.labels(state))
+
+    def test_does_not_dispatch_when_input_false(self):
+        state = forge([pull()], {})
+        said = self.passed(state, PREPARE_RELEASE="false")
+        workflow_runs = [c for c in state["calls"] if c[:2] == ["workflow", "run"]]
+        self.assertEqual([], workflow_runs)
+        self.assertEqual(["#7: label stays, no version tag names its merge commit"], said)
+        self.assertEqual([PENDING], self.labels(state))
+
 
 class WorkflowShapeTests(unittest.TestCase):
     def test_labels_are_judged_before_release_please_runs_and_checks_are_dispatched_after(self):
@@ -270,8 +305,9 @@ class WorkflowShapeTests(unittest.TestCase):
         for step in (LABELS, DISPATCH):
             with self.subTest(step=step):
                 calls = [line for line in source(step).splitlines() if "subprocess.run(" in line]
-                self.assertEqual(1, len(calls))
-                self.assertIn("timeout=60)", calls[0])
+                self.assertTrue(calls)
+                for call in calls:
+                    self.assertIn("timeout=60)", call)
 
 
 class InterpreterPinTests(unittest.TestCase):

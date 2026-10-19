@@ -87,15 +87,19 @@ def read_response(response, limit, deadline):
     raise ValidationError("Download exceeds size limit")
 
 
-def command(arguments, cwd=None, timeout=120):
+def command_bytes(arguments, cwd=None, timeout=120, limit=MAX_ASSET):
     try:
         result = subprocess.run(arguments, cwd=cwd, capture_output=True, check=False, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ValidationError("Required command unavailable or timed out") from exc
     # Never echo stderr: gh errors may include signed download URLs or response data.
     require(result.returncode == 0, f"{arguments[0]} command failed ({result.returncode})")
-    require(len(result.stdout) <= MAX_JSON, "Command output exceeds limit")
-    return result.stdout.decode("utf-8").strip()
+    require(len(result.stdout) <= limit, "Command output exceeds limit")
+    return result.stdout
+
+
+def command(arguments, cwd=None, timeout=120):
+    return command_bytes(arguments, cwd=cwd, timeout=timeout, limit=MAX_JSON).decode("utf-8").strip()
 
 
 def verify_attestation(path, repo, workflow, commit, tag):

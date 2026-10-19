@@ -7,7 +7,15 @@ import urllib.error
 from unittest.mock import Mock, patch
 
 from jellysin_tooling.common import ValidationError
-from jellysin_tooling.github import GitHub, NoRedirect, command, read_response, safe_url, verify_attestation
+from jellysin_tooling.github import (
+    GitHub,
+    NoRedirect,
+    command,
+    command_bytes,
+    read_response,
+    safe_url,
+    verify_attestation,
+)
 from tests.fixtures import COMMIT, FIRST
 
 
@@ -105,6 +113,15 @@ class NetworkTests(unittest.TestCase):
             self.assertRaises(ValidationError),
         ):
             command(["gh", "version"])
+
+    def test_command_bytes_returns_raw_bytes_and_enforces_limit(self):
+        with patch("subprocess.run", return_value=Mock(returncode=0, stdout=b"raw-bytes")):
+            self.assertEqual(b"raw-bytes", command_bytes(["git", "archive"]))
+        with (
+            patch("subprocess.run", return_value=Mock(returncode=0, stdout=b"exceeds")),
+            self.assertRaises(ValidationError),
+        ):
+            command_bytes(["git", "archive"], limit=4)
 
     def test_attestation_requires_workflow_tag_commit_and_hosted_runner(self):
         with patch("jellysin_tooling.github.command") as run:

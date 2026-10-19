@@ -18,12 +18,12 @@ class OwnReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(re.findall(r"(?m)^  (\S+):", triggers), ["workflow_dispatch"])
         self.assertEqual(re.findall(r"(?m)^      (\S+):$", triggers), ["tag", "commit"])
 
-    def test_one_job_holds_the_only_write_permission(self):
+    def test_one_job_holds_the_only_write_permissions(self):
         self.assertEqual(
-            re.findall(r"(?m)^( *)permissions:\n\1  (.+)$", self.contents),
-            [("", "contents: read"), ("    ", "contents: write")],
+            re.findall(r"(?m)^\s+(\S+: write)$", self.contents),
+            ["contents: write", "actions: write"],
         )
-        self.assertEqual(len(re.findall(r"(?m)^\s+\S+: write$", self.contents)), 1)
+        self.assertEqual(re.findall(r"(?m)^permissions:\n  (\S+: \S+)$", self.contents), ["contents: read"])
         self.assertEqual(re.findall(r"(?m)^  (\S+):$", self.contents.split("\njobs:\n", 1)[1]), ["prepare"])
 
     def test_checkout_has_the_history_the_command_needs_and_keeps_no_credentials(self):
@@ -31,16 +31,19 @@ class OwnReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("          fetch-depth: 0\n", checkout)
         self.assertIn("          persist-credentials: false\n", checkout)
 
-    def test_runs_the_command_of_this_checkout_with_the_built_in_token_and_skips_a_train_tag(self):
-        step = self.contents.split("        uses: ./actions/prepare\n", 1)[1]
+    def test_runs_the_command_of_this_checkout_and_dispatches_release(self):
+        prepare_step = self.contents.split("        uses: ./actions/prepare\n", 1)[1].split("      - name: ")[0]
         self.assertEqual(
-            step,
+            prepare_step,
             "        with:\n"
             "          tag: ${{ inputs.tag }}\n"
             "          commit: ${{ inputs.commit }}\n"
             "          token: ${{ github.token }}\n"
-            "          changelog-path: CHANGELOG.md\n"
-            "          skip-tagged: 'true'\n",
+            "          changelog-path: CHANGELOG.md\n",
         )
-        self.assertNotIn("run:", self.contents)
+        dispatch_step = self.contents.split("      - name: Dispatch release workflow\n", 1)[1]
+        self.assertIn('gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG"', dispatch_step)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", dispatch_step)
+        self.assertIn("RELEASE_TAG: ${{ inputs.tag }}", dispatch_step)
+        self.assertIn("^v[0-9]+\\.[0-9]+\\.[0-9]+$", dispatch_step)
         self.assertNotIn("secrets.", self.contents)

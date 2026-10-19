@@ -22,18 +22,26 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      # The merge train writes this repository's tag and release when the release PR merges; this run
-      # only fills in a version the train left untagged.
-      - name: Create the tag and one unpublished draft unless the merge train already tagged the version
+      - name: Create the tag and one unpublished draft
         uses: ./actions/prepare
         with:
           tag: ${{ inputs.tag }}
           commit: ${{ inputs.commit }}
           token: ${{ github.token }}
           changelog-path: CHANGELOG.md
-          skip-tagged: 'true'
+      - name: Dispatch release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$RELEASE_TAG"

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from urllib.parse import quote
 
-from . import spdx
+from . import source, spdx
 from .catalog import release_assets, validate_archive, validate_release
 from .common import MAX_ASSET, SHA, SIGNER_WORKFLOWS, decode_json, digest, read_json, repository, require, semver
 from .github import command, verify_attestation
@@ -195,6 +195,21 @@ def upload_missing(client, directory, files, missing, repo, tag, release_id, run
         )
 
 
+def plugin_artifacts(client, directory, repo, tag, commit):
+    release = read_json(Path(directory) / "release.json")
+    approved = {"repository": repo, "guid": release.get("plugin", {}).get("guid")}
+    validate_release(release, approved, tag)
+    require(release["commit"] == commit == remote_tag(client, repo, tag), "Local, remote and metadata commits differ")
+    return local_artifacts(directory, release)
+
+
+def source_artifacts(client, directory, repo, tag, commit):
+    release = read_json(Path(directory) / "release.json")
+    source.validate_release(release, repo, tag)
+    require(release["commit"] == commit == remote_tag(client, repo, tag), "Local, remote and metadata commits differ")
+    return source.local_artifacts(directory, release)
+
+
 def publish(
     client,
     directory,
@@ -206,17 +221,18 @@ def publish(
     *,
     signer_workflow=".github/workflows/release.yml",
     verified_tag_recovery=False,
+    kind="plugin",
 ):
+    require(kind in ("plugin", "source"), f"Unknown release kind: {kind}")
     repository(repo)
     require(workflow == ".github/workflows/release.yml", "Unapproved publisher workflow")
     require(signer_workflow in SIGNER_WORKFLOWS, "Unapproved signer workflow")
     commit = exact_tag(tag)
     publication_context(repo, tag, commit, verified_tag_recovery)
-    release = read_json(Path(directory) / "release.json")
-    approved = {"repository": repo, "guid": release.get("plugin", {}).get("guid")}
-    validate_release(release, approved, tag)
-    require(release["commit"] == commit == remote_tag(client, repo, tag), "Local, remote and metadata commits differ")
-    files = local_artifacts(directory, release)
+    if kind == "plugin":
+        files = plugin_artifacts(client, directory, repo, tag, commit)
+    else:
+        files = source_artifacts(client, directory, repo, tag, commit)
     for name in sorted(files):
         verifier(Path(directory) / name, repo, signer_workflow, commit, tag)
     found = find_release(client, repo, tag)
@@ -249,4 +265,4 @@ def publish(
         published.get("draft") is False and published.get("immutable") is True,
         "Published release must be immutable; enable repository immutable releases before publishing",
     )
-    return release
+    return decode_json(files["release.json"])
