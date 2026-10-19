@@ -115,3 +115,25 @@ class CommandLineTests(Workspace):
             main()
         self.assertEqual(1, caught.exception.code)
         self.assertNotIn(str(self.root), stderr.getvalue())
+
+    def test_missing_required_arguments_refused_and_full_publish_accepted(self):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+            parser().parse_args(["publish", "--repo", "o/r"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("the following arguments are required: --tag", stderr.getvalue())
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as caught:
+            parser().parse_args(["catalog-check"])
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("--fixture", stderr.getvalue())
+
+        arguments = parser().parse_args(["publish", "--repo", "o/r", "--tag", "v1.0.0"])
+        self.assertEqual(arguments.command, "publish")
+        self.assertEqual(arguments.repo, "o/r")
+        self.assertEqual(arguments.tag, "v1.0.0")
+        self.assertEqual(arguments.directory, "dist")
+        self.assertEqual(arguments.workflow, ".github/workflows/release.yml")
+        self.assertEqual(arguments.signer_workflow, ".github/workflows/release.yml")
+        self.assertFalse(arguments.verified_tag_recovery)

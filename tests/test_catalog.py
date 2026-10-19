@@ -4,6 +4,7 @@ import contextlib
 import copy
 import io
 import zipfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from jellysin_tooling.catalog import (
@@ -17,7 +18,7 @@ from jellysin_tooling.catalog import (
     validate_release,
     verified_release,
 )
-from jellysin_tooling.common import ValidationError, digest
+from jellysin_tooling.common import ValidationError, digest, read_json
 from tests.fixtures import FIRST, SECOND, FakeGitHub, Workspace, approved
 
 
@@ -208,6 +209,37 @@ class CatalogTests(Workspace):
         ):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 validate_manifest(value)
+
+    def test_manifest_guid_refusals_and_duplicates(self):
+        manifest_path = Path(__file__).parent / "data" / "repository" / "manifest.json"
+        manifest = read_json(manifest_path)
+        self.assertEqual(manifest, validate_manifest(manifest))
+
+        valid_guid = manifest[0]["guid"]
+        cases = (
+            ("missing", None, ValidationError, "Invalid manifest plugin"),
+            ("non_string", 123, ValidationError, "Invalid manifest plugin"),
+            ("braced", f"{{{valid_guid}}}", ValidationError, "Invalid manifest GUID"),
+            ("uppercase", valid_guid.upper(), ValidationError, "Invalid manifest GUID"),
+            ("not_a_guid", "not-a-guid", ValueError, None),
+        )
+        for name, value, expected_exception, pattern in cases:
+            with self.subTest(case=name):
+                mutated = copy.deepcopy(manifest)
+                if value is None:
+                    del mutated[0]["guid"]
+                else:
+                    mutated[0]["guid"] = value
+                if pattern is not None:
+                    with self.assertRaisesRegex(expected_exception, pattern):
+                        validate_manifest(mutated)
+                else:
+                    with self.assertRaises(expected_exception):
+                        validate_manifest(mutated)
+
+        duplicate = [copy.deepcopy(manifest[0]), copy.deepcopy(manifest[0])]
+        with self.assertRaisesRegex(ValidationError, "Duplicate manifest plugin"):
+            validate_manifest(duplicate)
 
 
 class ReleaseBoundaryTests(Workspace):
