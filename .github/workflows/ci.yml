@@ -154,6 +154,26 @@ jobs:
           mkdir "$RUNNER_TEMP/gitleaks-bin"
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
           "$RUNNER_TEMP/gitleaks-bin/gitleaks" git --redact --no-banner --exit-code 1 .
+  trivy:
+    name: vulnerabilities (trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # v0.76.0 archive verified with cosign verify-blob against its sigstore bundle and the aquasecurity/trivy
+      # release workflow identity at tag v0.76.0 before this pin; versions v0.69.4 to v0.69.6 were compromised (CVE-2026-33634).
+      - name: Scan dependencies with checksum-pinned trivy
+        env:
+          TRIVY_SHA256: e24b1c51293c1b15e4ba8d45bbc7891ba053f90278ec2698f3562c993e145fe7
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/aquasecurity/trivy/releases/download/v0.76.0/trivy_0.76.0_Linux-64bit.tar.gz --output "$RUNNER_TEMP/trivy.tar.gz"
+          echo "$TRIVY_SHA256  $RUNNER_TEMP/trivy.tar.gz" | sha256sum --check
+          mkdir "$RUNNER_TEMP/trivy-bin"
+          tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP/trivy-bin" trivy
+          # trivy's pip analyzer matches only requirements.txt by name, so --file-patterns points it at requirements-dev.txt; without it the scan reads no file.
+          "$RUNNER_TEMP/trivy-bin/trivy" fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --file-patterns 'pip:requirements-dev\.txt' .
   # The rules are local (.config/semgrep/rules.yml) and the container has no network, so no
   # registry rule or update decides a verdict; any finding fails the job.
   semgrep:
