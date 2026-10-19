@@ -50,7 +50,3 @@ exceptions:
     path: .github/workflows/prepare-release.yml
     reason: adoption found the release workflows short of the declared supply chain (SLSA Build Level 3 declared, Level 0 measured; enforce_cosign without a cosign signing step; require_sbom without an SBOM step); raise them as docs/guides/releasing.md in Praetor describes, then remove this entry
     expires: "2027-01-09"
-  - rule: declared-linters
-    tool: trivy
-    reason: the repository ships no container image and its only third-party packages are the hash-pinned development tools in requirements-dev.txt; trivy releases v0.69.4 to v0.69.6 and the trivy-action tags were replaced by malicious builds in March 2026 (CVE-2026-33634), so a trivy job waits until a release is verified against its signed provenance; add the job then and remove this entry
-    expires: "2027-01-11"
