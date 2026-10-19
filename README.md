@@ -113,7 +113,7 @@ dependency tree and frontend development tools are outside this production graph
 
 ## GitHub Actions
 
-Consume `actions/package`, `actions/prepare`, `actions/publish`, `actions/catalog`, or
+Consume `actions/package`, `actions/prepare`, `actions/publish`, `actions/catalog`, `actions/milestone`, or
 `actions/server-check` at a reviewed full commit SHA. Actions use their own downloaded directory; callers do not copy
 scripts or check out a mutable tooling branch.
 
@@ -159,6 +159,32 @@ not clear that separate approval gate. This is the documented
 [June 11, 2026 GitHub behavior](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/).
 Maintainers approve the actual PR workflow after reviewing the current changes.
 The automation retains only the built-in token; unattended PR merging is not promised.
+
+## Milestone check
+
+`milestone-check` verifies that repository milestones align with the release-please manifest and prevents milestone drift:
+
+```sh
+python tools.py milestone-check --directory . --repo jellysin/release-helper
+```
+
+Manifest version V is the stable `x.y.z` version read from `.release-please-manifest.json` at key `"."`. The expected next milestone is next(V) = `X.(Y+1).0`. Milestone titles matching `^v?(\d+)\.(\d+)\.(\d+)(?=\s|$)` (such as `1.6.0` or `0.6.0 — Open follow-ups`) are evaluated as version milestones; non-version milestones such as `Ongoing — ...` are ignored.
+
+Tag runs (`GITHUB_REF_TYPE=tag`, such as the verify job of `release.yml`) skip the check with a notice: the release is already merged, and milestone planning does not hold back its artifacts.
+
+In normal mode (pushes and pull requests):
+
+- At most one open version milestone may exist, and its version must equal next(V). Any other version or multiple open version milestones are refused.
+- Zero open version milestones passes with a notice line.
+
+In release mode (branches starting with `release-please--branches--`):
+
+- Open version milestones may only be titled V or next(V); any other open version milestone is refused for drift.
+- Exactly one open release pull request targeting `main` must exist.
+- The check passes if the pull request carries the `release-ready` label, or if V has patch Z == 0, milestone V is not open, and a closed milestone titled V exists.
+- Otherwise the check waits: close milestone V or add label `release-ready`, then re-run CI (`gh workflow run ci.yml --ref <branch>`).
+
+`actions/milestone` runs this check with inputs `directory` (default `.`) and `token` (default `${{ github.token }}`). The calling job requires `issues: read` and `pull-requests: read` permissions. Milestone listings are bounded to 100 entries per page (a full page of 100 is refused as unbounded).
 
 ## Release preparation
 

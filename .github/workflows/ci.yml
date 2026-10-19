@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -15,6 +16,10 @@ jobs:
     name: CI
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,6 +90,8 @@ jobs:
           PY
       - name: Run the shared check action from this checkout
         uses: ./actions/check
+      - name: Run the shared milestone action from this checkout
+        uses: ./actions/milestone
       # The shared actions run end to end on committed fixtures (tests/data), as a plugin repository runs them.
       - name: Package the fixture plugin with the shared package action
         id: fixture-package

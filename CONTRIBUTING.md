@@ -69,6 +69,11 @@ can open or update a release PR; it cannot create a tag, draft or published rele
 Merging the release PR updates version files and changelogs without publication.
 The reusable workflow has no publication inputs or tag output.
 
+Release cadence batches features on the open milestone next(V), where V is the manifest
+version. The release PR waits until that milestone is closed (or carries the label
+`release-ready` for a patch or an exception). After the release merges and tags, the
+next milestone is titled next(V), keeping one minor per milestone rather than per feature.
+
 A merged release PR keeps its `autorelease: pending` label until its version tag
 exists, and release-please opens no further release PR while it does. The first step
 of the reusable workflow moves the label to `autorelease: tagged` when the tag
