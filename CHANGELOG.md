@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/jellysin/release-helper/compare/v1.4.2...v1.5.0) (2026-10-19)
+
+
+### Features
+
+* **check:** validate release-please config and stale last-release-sha ([#82](https://github.com/jellysin/release-helper/issues/82)) ([94d8ee1](https://github.com/jellysin/release-helper/commit/94d8ee199fe9153190ca77fc05c6bef2600aa1da))
+* **release:** attach a cosign bundle per asset to releases ([#84](https://github.com/jellysin/release-helper/issues/84)) ([71ef5ea](https://github.com/jellysin/release-helper/commit/71ef5eafd95a69c6bfadea9a7bf1870f7d14769d))
+
 ## [1.4.2](https://github.com/jellysin/release-helper/compare/v1.4.1...v1.4.2) (2026-10-19)
 
 
