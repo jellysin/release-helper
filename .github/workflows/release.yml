@@ -9,6 +9,10 @@ concurrency:
 jobs:
   verify:
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     uses: ./.github/workflows/ci.yml
   build:
     if: startsWith(github.ref, 'refs/tags/v')

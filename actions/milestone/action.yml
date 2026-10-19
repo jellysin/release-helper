@@ -1,0 +1,22 @@
+name: Milestone check
+description: 'Validate milestone versions against the release-please manifest and gate release PRs on milestone closure or release-ready label. Caller job needs issues: read and pull-requests: read permissions.'
+inputs:
+  directory:
+    description: Repository directory.
+    default: .
+  token:
+    description: Calling repository's built-in GITHUB_TOKEN.
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version-file: ${{ github.action_path }}/../../.python-version
+    - shell: bash
+      env:
+        TOOL_ROOT: ${{ github.action_path }}/../..
+        REPOSITORY_DIRECTORY: ${{ inputs.directory }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        python "$TOOL_ROOT/tools.py" milestone-check --directory "$REPOSITORY_DIRECTORY"

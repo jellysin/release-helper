@@ -26,7 +26,7 @@ class PythonPinTests(unittest.TestCase):
                     self.assertTrue(target.endswith(".python-version"), target)
                 setups += uses
         # A renamed action or moved folder must not turn this into a vacuous pass.
-        self.assertEqual(setups, 11)
+        self.assertEqual(setups, 12)
 
     def test_documents_do_not_repeat_the_version(self):
         version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()

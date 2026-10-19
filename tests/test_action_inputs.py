@@ -179,6 +179,17 @@ class RecordedInputTests(unittest.TestCase):
         argv, _ = self.argv("server-check", {"manifest": "manifest.json", "image": image})
         self.assertEqual(argv[-2:], ["--image", image])
 
+    def test_milestone_passes_directory_and_token(self):
+        inputs = {"directory": "custom-dir", "token": "synthetic-token"}
+        argv, token = self.argv("milestone", inputs)
+        self.assertEqual(argv, [TOOLS, "milestone-check", "--directory", "custom-dir"])
+        self.assertEqual(token, "synthetic-token")
+
+    def test_milestone_uses_default_directory_and_token(self):
+        argv, token = self.argv("milestone", {})
+        self.assertEqual(argv, [TOOLS, "milestone-check", "--directory", "."])
+        self.assertEqual(token, "${{ github.token }}")
+
 
 @unittest.skipIf(bash() is None, SKIP_REASON)
 class RefusalTests(unittest.TestCase):
@@ -238,3 +249,7 @@ class WorkflowWiringTests(unittest.TestCase):
         )
         for path in ("plugin/plugin.json", "plugin/version.txt", "repository/manifest.json", "repository/plugins.json"):
             self.assertTrue((ROOT / "tests" / "data" / path).is_file(), path)
+
+    def test_ci_runs_the_milestone_action(self):
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("        uses: ./actions/milestone\n", ci)

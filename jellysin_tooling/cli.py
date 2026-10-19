@@ -5,8 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-from . import catalog, changelog, fixture, inventory, package, policy, prepare, release, servercheck, source
-from .common import TOOL_NAME, ValidationError, metadata, read_json, require
+from . import catalog, changelog, fixture, inventory, milestone, package, policy, prepare, release, servercheck, source
+from .common import TOOL_NAME, ValidationError, metadata, read_json, repository, require
 from .github import GitHub, command
 
 
@@ -60,6 +60,9 @@ def parser():
     server.add_argument("--image")
     check = commands.add_parser("check-policy")
     check.add_argument("--directory", default=".")
+    milestone_cmd = commands.add_parser("milestone-check")
+    milestone_cmd.add_argument("--directory", default=".")
+    milestone_cmd.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY"))
     return root
 
 
@@ -171,7 +174,17 @@ def run_catalog(arguments):
         catalog.update(arguments.manifest, current, merged)
 
 
+def run_milestone_check(arguments):
+    repo = arguments.repo or os.environ.get("GITHUB_REPOSITORY")
+    require(isinstance(repo, str) and repo, "Missing repository")
+    repository(repo)
+    milestone.check(GitHub(), arguments.directory, repo)
+
+
 def run(arguments):
+    if arguments.command == "milestone-check":
+        run_milestone_check(arguments)
+        return
     if arguments.command == "check-policy":
         policy.check_repository(arguments.directory)
         return
