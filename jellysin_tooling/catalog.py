@@ -14,6 +14,7 @@ from .common import (
     MAX_RELEASES,
     SHA,
     SIGNER_WORKFLOWS,
+    ValidationError,
     atomic_write,
     decode_json,
     digest,
@@ -36,6 +37,16 @@ REQUIRED_ASSETS = frozenset({"release.json", "checksums.txt", "sbom.spdx.json"})
 LINK = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
 
 
+def canonical_guid(value, message):
+    """Return value when it is a GUID in canonical lower-case hyphenated form; refuse anything else."""
+    try:
+        canonical = isinstance(value, str) and str(UUID(value)) == value
+    except ValueError:
+        raise ValidationError(message) from None
+    require(canonical, message)
+    return value
+
+
 def allowlist(value):
     require(isinstance(value, dict) and value.get("schemaVersion") == 1, "Invalid allowlist schema")
     plugins = value.get("plugins")
@@ -48,7 +59,7 @@ def allowlist(value):
             "Invalid allowlist entry",
         )
         repository(plugin["repository"])
-        require(str(UUID(plugin["guid"])) == plugin["guid"], "Invalid allowlisted GUID")
+        canonical_guid(plugin["guid"], "Invalid allowlisted GUID")
         require(plugin["signerWorkflow"] in SIGNER_WORKFLOWS, "Unapproved release workflow")
         require(plugin["guid"] not in identities and plugin["repository"] not in repos, "Duplicate plugin identity")
         identities.add(plugin["guid"])
@@ -137,7 +148,7 @@ def validate_manifest(value):
     for plugin in value:
         require(isinstance(plugin, dict) and isinstance(plugin.get("guid"), str), "Invalid manifest plugin")
         require(PLUGIN_FIELDS <= plugin.keys() <= PLUGIN_FIELDS | {"imageUrl"}, "Unexpected manifest fields")
-        require(str(UUID(plugin["guid"])) == plugin["guid"], "Invalid manifest GUID")
+        canonical_guid(plugin["guid"], "Invalid manifest GUID")
         for key in ("name", "description", "overview", "owner", "category"):
             text(plugin[key], key)
         require(plugin["guid"] not in identities, "Duplicate manifest plugin")

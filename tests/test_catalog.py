@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from jellysin_tooling.catalog import (
     allowlist,
+    canonical_guid,
     collect,
     merge_manifest,
     release_assets,
@@ -193,6 +194,12 @@ class CatalogTests(Workspace):
                 self.assertRaisesRegex(ValidationError, "Unapproved release workflow"),
             ):
                 allowlist({"schemaVersion": 1, "plugins": [{**approved(), "signerWorkflow": workflow}]})
+        for guid in ("not-a-guid", f"{{{FIRST['guid']}}}", FIRST["guid"].upper(), 123):
+            with (
+                self.subTest(guid=guid),
+                self.assertRaisesRegex(ValidationError, "Invalid allowlisted GUID"),
+            ):
+                allowlist({"schemaVersion": 1, "plugins": [{**approved(), "guid": guid}]})
         for plugins in ([], [approved(), approved()], [None]):
             with self.subTest(plugins=plugins), self.assertRaises(ValidationError):
                 allowlist({"schemaVersion": 1, "plugins": plugins})
@@ -221,7 +228,7 @@ class CatalogTests(Workspace):
             ("non_string", 123, ValidationError, "Invalid manifest plugin"),
             ("braced", f"{{{valid_guid}}}", ValidationError, "Invalid manifest GUID"),
             ("uppercase", valid_guid.upper(), ValidationError, "Invalid manifest GUID"),
-            ("not_a_guid", "not-a-guid", ValueError, None),
+            ("not_a_guid", "not-a-guid", ValidationError, "Invalid manifest GUID"),
         )
         for name, value, expected_exception, pattern in cases:
             with self.subTest(case=name):
@@ -230,16 +237,19 @@ class CatalogTests(Workspace):
                     del mutated[0]["guid"]
                 else:
                     mutated[0]["guid"] = value
-                if pattern is not None:
-                    with self.assertRaisesRegex(expected_exception, pattern):
-                        validate_manifest(mutated)
-                else:
-                    with self.assertRaises(expected_exception):
-                        validate_manifest(mutated)
+                with self.assertRaisesRegex(expected_exception, pattern):
+                    validate_manifest(mutated)
 
         duplicate = [copy.deepcopy(manifest[0]), copy.deepcopy(manifest[0])]
         with self.assertRaisesRegex(ValidationError, "Duplicate manifest plugin"):
             validate_manifest(duplicate)
+
+    def test_canonical_guid_helper(self):
+        valid = FIRST["guid"]
+        self.assertEqual(canonical_guid(valid, "Invalid GUID"), valid)
+        for invalid in ("not-a-guid", valid.upper(), f"{{{valid}}}", 123, None):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValidationError, "Invalid GUID"):
+                canonical_guid(invalid, "Invalid GUID")
 
 
 class ReleaseBoundaryTests(Workspace):
