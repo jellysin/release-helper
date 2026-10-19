@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/jellysin/release-helper/compare/v1.2.3...v1.3.0) (2026-10-19)
+
+
+### Features
+
+* **catalog:** check a local fixture release with catalog-check ([#67](https://github.com/jellysin/release-helper/issues/67)) ([da261ab](https://github.com/jellysin/release-helper/commit/da261ab21b71c61ea3be32d30246e1f641f78f63))
+* **prepare:** skip a version whose tag another writer already made ([#60](https://github.com/jellysin/release-helper/issues/60)) ([d8a7fe3](https://github.com/jellysin/release-helper/commit/d8a7fe39c09fc2846c08d08d3ee76ddc26f55906))
+
+
+### Bug Fixes
+
+* **catalog:** skip a release without metadata, checksums or SBOM ([#63](https://github.com/jellysin/release-helper/issues/63)) ([feb6a0d](https://github.com/jellysin/release-helper/commit/feb6a0da24445af11b53149feca1ff6836b41d5f))
+
 ## [1.2.3](https://github.com/jellysin/release-helper/compare/v1.2.2...v1.2.3) (2026-10-18)
 
 
