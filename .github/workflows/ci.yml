@@ -31,7 +31,8 @@ jobs:
           python tools.py check-policy
       # Consumers pin this tooling by commit with a version comment; the comment means something only while
       # every version tag has an immutable release. Tags older than the first release predate releases (#21).
-      # release.yml runs this step on its own tag before publication; only that tag may then hold a draft.
+      # release.yml runs this step on its own tag before publication, so that tag may still be unpublished. Its
+      # read-only token cannot see drafts (list releases shows drafts only to push access); the publisher requires one.
       - name: Check that this repository's releases are immutable and every version tag has one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,13 +56,11 @@ jobs:
           def version(name):
               match = VERSION.fullmatch(name)
               return tuple(map(int, match.groups())) if match else None
-          # v1.4.0 was tagged before release runs could pass this step; its draft is kept, never published.
-          SUPERSEDED = {'v1.4.0': 'tag kept with an unpublished draft; superseded by v1.4.1'}
+          # Tagged before release runs could pass this step and build; their drafts are kept, never published.
+          SUPERSEDED = {tag: 'tag kept with an unpublished draft; superseded by v1.4.2' for tag in ('v1.4.0', 'v1.4.1')}
           REF = os.environ.get('GITHUB_REF', '')
           RUN_TAG = REF.removeprefix('refs/tags/') if REF.startswith('refs/tags/') else None
-          releases = gh(f'repos/{REPO}/releases?per_page=100')
-          published = {release['tag_name']: release for release in releases if release.get('draft') is False}
-          drafts = {release['tag_name'] for release in releases if release.get('draft') is True}
+          published = {release['tag_name']: release for release in gh(f'repos/{REPO}/releases?per_page=100') if release.get('draft') is False}
           tags = [tag['name'] for tag in gh(f'repos/{REPO}/tags?per_page=100') if version(tag['name'])]
           problems = [f'{tag}: release is not immutable' for tag, release in published.items() if release.get('immutable') is not True]
           first = min((version(tag) for tag in published if version(tag)), default=None)
@@ -71,8 +70,8 @@ jobs:
               if tag in SUPERSEDED:
                   print(f'{tag}: {SUPERSEDED[tag]}')
                   continue
-              if tag == RUN_TAG and tag in drafts:
-                  print(f'{tag}: draft awaiting publication by this release run')
+              if tag == RUN_TAG:
+                  print(f'{tag}: unpublished; this release run publishes it or fails')
                   continue
               if first is not None and version(tag) < first:
                   print(f'{tag}: predates the first published release')

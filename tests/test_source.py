@@ -339,18 +339,20 @@ class SourceReleaseTests(Workspace):
             with self.assertRaisesRegex(ValidationError, "Invalid archive data"):
                 source.members(data_exceeds)
 
-    def test_max_files_boundary(self):
-        # Build tar with exactly MAX_FILES members: 1 dir + (MAX_FILES - 1) files
-        members_ok = {f"file_{i}.txt": b"content" for i in range(MAX_FILES - 1)}
-        tar_ok = make_tar_gz(members_ok, prefix="bound-1.0.0")
-        extracted = source.members(tar_ok, prefix="bound-1.0.0")
-        self.assertEqual(MAX_FILES - 1, len(extracted))
-
-        # Build tar with MAX_FILES files (+ 1 dir = MAX_FILES + 1 members)
-        members_exceeds = {f"file_{i}.txt": b"content" for i in range(MAX_FILES)}
-        tar_exceeds = make_tar_gz(members_exceeds, prefix="bound-1.0.0")
+    def test_source_member_bound_is_its_own(self):
+        # The plugin ZIP bound (MAX_FILES) must not cap a source tree.
+        self.assertGreater(source.MAX_SOURCE_MEMBERS, MAX_FILES)
+        ok = make_tar_gz({f"f{i}": b"" for i in range(source.MAX_SOURCE_MEMBERS - 1)}, prefix="big-1.0.0")
+        self.assertEqual(source.MAX_SOURCE_MEMBERS - 1, len(source.members(ok, prefix="big-1.0.0")))
+        over = make_tar_gz({f"f{i}": b"" for i in range(source.MAX_SOURCE_MEMBERS)}, prefix="big-1.0.0")
         with self.assertRaisesRegex(ValidationError, "Too many archive members"):
-            source.members(tar_exceeds, prefix="bound-1.0.0")
+            source.members(over, prefix="big-1.0.0")
+
+    def test_this_repository_tree_fits_the_source_archive(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        head = command(["git", "rev-parse", "HEAD"], cwd=root)
+        extracted = source.members(source.archive_bytes(head, "release-helper-0.0.0", cwd=root), "release-helper-0.0.0")
+        self.assertGreater(len(extracted), MAX_FILES)
 
     def test_package_source_cli(self):
         repo_dir, commit, tag = self.make_git_repo()
