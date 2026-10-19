@@ -1,6 +1,7 @@
-"""Two independent plugins ensure tooling has no Last.fm-specific assumptions."""
-
+import base64
 import copy
+import hashlib
+import json
 import os
 import tempfile
 import unittest
@@ -31,6 +32,47 @@ SECOND = {
 }
 COMMIT = "a" * 40
 CREATED = "2026-09-08T12:00:00Z"
+
+
+def make_bundle(
+    asset_bytes,
+    media_type="application/vnd.dev.sigstore.bundle.v0.3+json",
+    algorithm="SHA2_256",
+    digest=None,
+    padding="",
+):
+    if digest is None:
+        digest = base64.b64encode(hashlib.sha256(asset_bytes).digest()).decode("ascii")
+    bundle = {
+        "mediaType": media_type,
+        "verificationMaterial": {
+            "certificate": "synthetic-certificate",
+            "padding": padding,
+        },
+        "messageSignature": {
+            "messageDigest": {
+                "algorithm": algorithm,
+                "digest": digest,
+            },
+            "signature": "synthetic-signature",
+        },
+    }
+    return json.dumps(bundle, indent=2).encode("utf-8")
+
+
+def write_bundles(directory, files=None):
+    root = Path(directory)
+    if files is None:
+        files = {
+            f.name: f.read_bytes() for f in root.iterdir() if f.is_file() and not f.name.endswith(".sigstore.json")
+        }
+    bundles = {}
+    for name, data in files.items():
+        bundle_name = f"{name}.sigstore.json"
+        bundle_bytes = make_bundle(data)
+        (root / bundle_name).write_bytes(bundle_bytes)
+        bundles[bundle_name] = bundle_bytes
+    return bundles
 
 
 def approved(info=FIRST):

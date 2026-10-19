@@ -15,7 +15,7 @@ from jellysin_tooling.release import (
     remote_tag,
     remove_draft_starters,
 )
-from tests.fixtures import COMMIT, FIRST, SECOND, FakeGitHub, Workspace, approved
+from tests.fixtures import COMMIT, FIRST, SECOND, FakeGitHub, Workspace, approved, write_bundles
 
 
 class PublicationTests(Workspace):
@@ -142,6 +142,7 @@ class PublicationTests(Workspace):
 
     def test_publish_with_build_signed_signer_workflow(self):
         release, output = self.plugin()
+        write_bundles(output)
         client = FakeGitHub()
         client.add(FIRST, release, output)
         runner = Mock()

@@ -147,7 +147,12 @@ For a separately authorized publication, attest **all four artifacts** using
 `.github/workflows/release.yml`, then call `actions/publish` with `directory`, `tag`
 and the built-in `token`. Optional input `signer-workflow` defaults to
 `.github/workflows/release.yml`; allowed values are `.github/workflows/release.yml`
-and `.github/workflows/build-signed.yml`. An existing draft and the exact tag are prerequisites;
+and `.github/workflows/build-signed.yml`. With `build-signed.yml`, the directory must also
+hold the cosign bundle `<asset>.sigstore.json` of each artifact; the publisher checks
+that each bundle names its artifact's SHA-256 and uploads it next to the artifact, so a
+release carries eight assets. Anyone can then verify an asset with
+`cosign verify-blob --bundle <asset>.sigstore.json --certificate-identity https://github.com/<repo>/.github/workflows/build-signed.yml@refs/tags/<tag> --certificate-oidc-issuer https://token.actions.githubusercontent.com <asset>`.
+Releases up to v1.4.2 carry no bundles. An existing draft and the exact tag are prerequisites;
 release PR preparation creates neither, `actions/prepare` creates both. GitHub currently requires maintainer approval of
 `GITHUB_TOKEN`-created PR workflows, including later updates; dispatching CI does
 not clear that separate approval gate. This is the documented

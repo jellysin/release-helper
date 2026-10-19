@@ -56,6 +56,9 @@ jobs:
                 --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build-signed.yml"
             fi
           done
+      - name: Copy signature bundles to dist
+        run: |
+          cp -n signatures/*.sigstore.json dist/
       - uses: ./actions/publish
         with:
           directory: dist
