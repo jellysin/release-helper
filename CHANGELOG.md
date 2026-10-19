@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/jellysin/release-helper/compare/v1.4.0...v1.4.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **ci:** let the release run pass verify while its own tag holds a draft ([#78](https://github.com/jellysin/release-helper/issues/78)) ([f034577](https://github.com/jellysin/release-helper/commit/f034577886a109e8625f530ef8398f8be1a89800))
+
 ## [1.4.0](https://github.com/jellysin/release-helper/compare/v1.3.1...v1.4.0) (2026-10-19)
 
 
