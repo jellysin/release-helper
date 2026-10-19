@@ -43,6 +43,14 @@ class CatalogCommandTests(Workspace):
         self.write(self.current, FIRST, SECOND)
         self.assertEqual(self.command("validate-catalog"), (0, ""))
 
+    def test_validate_catalog_refuses_malformed_manifest_guid(self):
+        malformed = copy.deepcopy(self.current)
+        malformed[0]["guid"] = "not-a-guid"
+        self.write(malformed, FIRST)
+        status, stderr = self.command("validate-catalog")
+        self.assertEqual(status, 1)
+        self.assertIn("Invalid manifest GUID", stderr)
+
     def test_an_unapproved_plugin_is_refused_and_nothing_is_written(self):
         self.write(self.current, SECOND)
         before = self.manifest.read_bytes()
