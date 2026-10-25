@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from tests.test_release_pr_workflow import StepCase, forge
+from tests.test_release_pr_workflow import MERGE, OTHER, StepCase, forge
 
 CI = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
 
@@ -11,8 +11,14 @@ def published(tag, immutable=True):
     return {"tag_name": tag, "draft": False, "immutable": immutable}
 
 
-def state(releases, tags):
-    return forge(releases=releases, tag_listing=[{"name": name} for name in tags])
+def state(releases, tags, commits=None, **changes):
+    mapping = commits or {}
+    tag_listing = [{"name": name, "commit": {"sha": mapping.get(name, OTHER)}} for name in tags]
+    return forge(releases=releases, tag_listing=tag_listing, **changes)
+
+
+def release_reads(state):
+    return sum(1 for call in state["calls"] if call[1].endswith("/releases?per_page=100"))
 
 
 class OwnReleaseTests(StepCase):
@@ -75,3 +81,83 @@ class OwnReleaseTests(StepCase):
     def test_a_failed_or_full_listing_fails_without_echoing_it(self):
         self.failed(state([], []) | {"fail": "every"}, "Release listing request failed")
         self.failed(state([published(f"v1.0.{n}") for n in range(100)], []), "Unexpected release or tag listing")
+
+    def test_planted_race_waits_for_own_release_and_passes(self):
+        unpublished = [published("v1.1.0")]
+        ready = [published("v1.3.0"), published("v1.1.0")]
+        test_state = state(
+            [],
+            ["v1.3.0", "v1.1.0"],
+            commits={"v1.3.0": MERGE},
+            release_snapshots=[unpublished, unpublished, ready],
+        )
+        lines = self.passed(test_state, GITHUB_SHA=MERGE, RELEASE_WAIT_INTERVAL="0")
+        self.assertIn("v1.3.0: tagged at this commit; waiting up to 0 s for its release run to publish", lines)
+        self.assertEqual(3, release_reads(test_state))
+
+    def test_own_release_that_never_publishes_fails_after_bounded_attempts(self):
+        unpublished = [published("v1.1.0")]
+        test_state = state(
+            [],
+            ["v1.3.0", "v1.1.0"],
+            commits={"v1.3.0": MERGE},
+            release_snapshots=[unpublished],
+        )
+        done = self.failed(
+            test_state,
+            "1 release problem(s)",
+            GITHUB_SHA=MERGE,
+            RELEASE_WAIT_ATTEMPTS="3",
+            RELEASE_WAIT_INTERVAL="0",
+        )
+        self.assertIn("v1.3.0: release run on this commit did not publish within 0 s", done.stdout)
+        self.assertEqual(4, release_reads(test_state))
+
+    def test_tag_on_another_commit_with_github_sha_set_fails_immediately(self):
+        test_state = state(
+            [published("v1.1.0")],
+            ["v1.3.0", "v1.1.0"],
+            commits={"v1.3.0": OTHER},
+        )
+        done = self.failed(
+            test_state,
+            "1 release problem(s)",
+            GITHUB_SHA=MERGE,
+            RELEASE_WAIT_INTERVAL="0",
+        )
+        self.assertIn("v1.3.0: version tag has no published release", done.stdout)
+        self.assertEqual(1, release_reads(test_state))
+
+    def test_waited_release_published_mutable_fails(self):
+        unpublished = [published("v1.1.0")]
+        mutable = [published("v1.3.0", immutable=False), published("v1.1.0")]
+        test_state = state(
+            [],
+            ["v1.3.0", "v1.1.0"],
+            commits={"v1.3.0": MERGE},
+            release_snapshots=[unpublished, mutable],
+        )
+        done = self.failed(
+            test_state,
+            "1 release problem(s)",
+            GITHUB_SHA=MERGE,
+            RELEASE_WAIT_INTERVAL="0",
+        )
+        self.assertIn("v1.3.0: release is not immutable", done.stdout)
+
+    def test_wait_attempts_env_clamped_to_default(self):
+        unpublished = [published("v1.1.0")]
+        test_state = state(
+            [],
+            ["v1.3.0", "v1.1.0"],
+            commits={"v1.3.0": MERGE},
+            release_snapshots=[unpublished],
+        )
+        self.failed(
+            test_state,
+            "1 release problem(s)",
+            GITHUB_SHA=MERGE,
+            RELEASE_WAIT_ATTEMPTS="1000",
+            RELEASE_WAIT_INTERVAL="0",
+        )
+        self.assertEqual(28, release_reads(test_state))
