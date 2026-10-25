@@ -142,3 +142,36 @@ event will recursively trigger another workflow.
 GitHub may also create an approval-required PR run for each bot-authored update.
 Review the current PR and approve that real run before merging; a successful
 dispatch does not replace its approval. Do not fabricate checks or weaken protection.
+
+## Security release procedure
+
+Reports arrive privately through the route in [SECURITY.md](SECURITY.md). The fix is
+prepared in private and published as a new patch version, and then the advisory is
+published. Advisories and CVE requests are maintainer acts in the GitHub interface; no
+workflow writes them.
+
+1. Accept the reported draft advisory, or
+   [create a draft repository advisory](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/create-repository-advisory)
+   for a finding of your own. Add reviewers as advisory collaborators.
+2. Develop and review the fix in the advisory's
+   [temporary private fork](https://docs.github.com/en/code-security/tutorials/fix-reported-vulnerabilities/collaborate-in-a-fork).
+   Status checks and CI integrations do not run there, so run `make verify-all`
+   locally and record the result in the advisory. The fix comes with the case it
+   refuses, as every change here does.
+3. Do not use the advisory's merge button: GitHub does not enforce branch protection
+   for that merge. Push the reviewed commits to a branch of this repository and open a
+   pull request with a `fix:` title. It merges like any other change: strict required
+   checks, a signed squash merge at CLEAN. The fix is public from this point on, so
+   finish the next two steps without a pause.
+4. Release the patch version through the [Release contract](#release-contract). Give
+   the release PR the `release-ready` label so that it does not wait for the milestone.
+   The merge train then tags and publishes it, with `prepare-release.yml` as the
+   fallback. A published asset is never replaced; a fix that needs another change gets
+   another version.
+5. In the advisory, set the affected range (`< X.Y.Z`) and the patched version `X.Y.Z`,
+   name the fixed commit SHA, and either
+   [request a CVE or publish](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/fix-reported-vulnerabilities/publish-repository-advisory).
+   Publishing deletes the temporary private fork.
+6. Consumers pin the reusable workflow and actions to a full commit SHA. They receive
+   the fixed commit as a Renovate update and can compare it with the SHA in the
+   advisory before they merge it.
