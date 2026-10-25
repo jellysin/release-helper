@@ -38,6 +38,8 @@ jobs:
       # every version tag has an immutable release. Tags older than the first release predate releases (#21).
       # release.yml runs this step on its own tag before publication, so that tag may still be unpublished. Its
       # read-only token cannot see drafts (list releases shows drafts only to push access); the publisher requires one.
+      # A tag on this commit may still be publishing from release.yml; wait bounded polls before failing it.
+      # RELEASE_WAIT_ATTEMPTS and RELEASE_WAIT_INTERVAL clamp to 0..default so tests can run without delay.
       - name: Check that this repository's releases are immutable and every version tag has one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,6 +49,7 @@ jobs:
           import os
           import re
           import subprocess
+          import time
           REPO = os.environ['GITHUB_REPOSITORY']
           VERSION = re.compile(r'v(\d+)\.(\d+)\.(\d+)')
           def gh(path):
@@ -61,14 +64,23 @@ jobs:
           def version(name):
               match = VERSION.fullmatch(name)
               return tuple(map(int, match.groups())) if match else None
+          def bounded_env(name, default):
+              try:
+                  return max(0, min(int(os.environ[name]), default))
+              except (KeyError, ValueError):
+                  return default
           # Tagged before release runs could pass this step and build; their drafts are kept, never published.
           SUPERSEDED = {tag: 'tag kept with an unpublished draft; superseded by v1.4.2' for tag in ('v1.4.0', 'v1.4.1')}
           REF = os.environ.get('GITHUB_REF', '')
           RUN_TAG = REF.removeprefix('refs/tags/') if REF.startswith('refs/tags/') else None
+          SHA = os.environ.get('GITHUB_SHA')
           published = {release['tag_name']: release for release in gh(f'repos/{REPO}/releases?per_page=100') if release.get('draft') is False}
-          tags = [tag['name'] for tag in gh(f'repos/{REPO}/tags?per_page=100') if version(tag['name'])]
-          problems = [f'{tag}: release is not immutable' for tag, release in published.items() if release.get('immutable') is not True]
+          tag_items = [tag for tag in gh(f'repos/{REPO}/tags?per_page=100') if version(tag['name'])]
+          tag_commits = {tag['name']: tag.get('commit', {}).get('sha') for tag in tag_items}
+          tags = [tag['name'] for tag in tag_items]
           first = min((version(tag) for tag in published if version(tag)), default=None)
+          pending = []
+          problems = []
           for tag in tags:
               if tag in published:
                   continue
@@ -81,7 +93,27 @@ jobs:
               if first is not None and version(tag) < first:
                   print(f'{tag}: predates the first published release')
                   continue
+              if SHA and tag_commits.get(tag) == SHA:
+                  pending.append(tag)
+                  continue
               problems.append(f'{tag}: version tag has no published release')
+          if pending:
+              attempts = bounded_env('RELEASE_WAIT_ATTEMPTS', 27)
+              interval = bounded_env('RELEASE_WAIT_INTERVAL', 20)
+              seconds = attempts * interval
+              for tag in pending:
+                  print(f'{tag}: tagged at this commit; waiting up to {seconds} s for its release run to publish')
+              for attempt in range(attempts):
+                  if interval > 0:
+                      time.sleep(interval)
+                  published = {release['tag_name']: release for release in gh(f'repos/{REPO}/releases?per_page=100') if release.get('draft') is False}
+                  if all(tag in published for tag in pending):
+                      break
+              for tag in pending:
+                  if tag not in published:
+                      problems.append(f'{tag}: release run on this commit did not publish within {seconds} s')
+          immutable_problems = [f'{tag}: release is not immutable' for tag, release in published.items() if release.get('immutable') is not True]
+          problems = immutable_problems + problems
           for problem in problems:
               print(problem)
           if problems:

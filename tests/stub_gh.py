@@ -10,6 +10,13 @@ PENDING, TAGGED = "autorelease: pending", "autorelease: tagged"
 SECRET = "secret response body"
 
 
+def release_listing(state):
+    if "release_snapshots" in state:
+        snapshots = state["release_snapshots"]
+        return snapshots[0] if len(snapshots) == 1 else snapshots.pop(0)
+    return state["releases"]
+
+
 def read(state, path):
     # A test that lists the exact answers of its reads gets them as given; the paths below serve the rest.
     if path in state.get("responses", {}):
@@ -26,7 +33,7 @@ def read(state, path):
     if kind == "pulls":
         return state["pulls"][name]
     if path == f"{prefix}releases?per_page=100":
-        return state["releases"]
+        return release_listing(state)
     if path == f"{prefix}tags?per_page=100":
         return state["tag_listing"]
     if path != f"{prefix}issues?state=closed&labels=autorelease%3A%20pending&per_page=20":
