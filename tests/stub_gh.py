@@ -73,8 +73,10 @@ def main():
     answer = None if failing else answered(state, arguments)
     path.write_text(json.dumps(state), encoding="utf-8")
     if failing:
+        # The real gh ends its error line with the HTTP status of a refused request, after the message.
+        status = state.get("status", 502)
         print(json.dumps({"message": SECRET}))
-        print(SECRET, file=sys.stderr)
+        print(f"gh: {SECRET}" + (f" (HTTP {status})" if status else ""), file=sys.stderr)
         return 1
     if answer is not None:
         print(json.dumps(answer))
