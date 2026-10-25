@@ -253,8 +253,26 @@ class ReleaseLabelTests(StepCase):
 
     def test_oversized_answer_is_refused(self):
         state = forge([pull(title="chore(main): release 1.2.3" + " " * 1_000_000)], {"v1.2.3": lightweight()})
-        self.failed(state, "Release label request failed")
+        self.failed(state, f"Release label request failed: GET repos/{REPO}/pulls/7: answer over 1000000 bytes")
         self.assertEqual([], state["writes"])
+
+    def test_refused_label_write_names_the_request_and_its_status(self):
+        state = forge([pull()], {"v1.2.3": lightweight()}, fail="POST", status=403)
+        self.failed(state, f"Release label request failed: POST repos/{REPO}/issues/7/labels: HTTP 403")
+        self.assertEqual([PENDING], self.labels(state))
+        state.update(fail="DELETE", status=404, calls=[], writes=[])
+        path = f"repos/{REPO}/issues/7/labels/autorelease%3A%20pending"
+        self.failed(state, f"Release label request failed: DELETE {path}: HTTP 404")
+        self.assertEqual([PENDING, TAGGED], self.labels(state))
+
+    def test_refused_listing_names_the_path_without_its_query(self):
+        state = forge([pull()], {"v1.2.3": lightweight()}, fail="every", status=500)
+        done = self.failed(state, f"Release label request failed: GET repos/{REPO}/issues: HTTP 500")
+        self.assertNotIn("labels=", done.stderr)
+
+    def test_refusal_without_a_status_says_so(self):
+        state = forge([pull()], {"v1.2.3": lightweight()}, fail="every", status=None)
+        self.failed(state, f"Release label request failed: GET repos/{REPO}/issues: no HTTP status")
 
     def test_dispatches_prepare_release_for_pending_merged_pr_without_tag(self):
         state = forge([pull()], {})
