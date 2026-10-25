@@ -15,6 +15,12 @@ from .github import command
 RELEASE_PLEASE_VERSION = "17.6.0"
 SCHEMA_SHA256 = "82ae5d0a805cd3e4c437ce7a4d3eae1e3db51706ad414c624cc749ca02e7c1c5"
 MAX_DEPTH = 32
+MAX_WORKFLOW_FILES = 200
+MAX_WORKFLOW_BYTES = 1024 * 1024
+PREPARE_ACTION_PATTERN = re.compile(
+    r"^\s*(?:-\s*)?uses:\s*[\"']?(?:jellysin/release-helper/actions/prepare@|\./actions/prepare(?:[\"'\s#]|$))",
+    re.MULTILINE,
+)
 
 
 class UnsupportedSchemaError(ValidationError):
@@ -236,6 +242,22 @@ def is_ancestor(ancestor, descendant, root):
         return False
 
 
+def creates_release_tags(root):
+    workflows_dir = Path(root) / ".github" / "workflows"
+    if not workflows_dir.is_dir():
+        return False
+    candidates = sorted(p for p in workflows_dir.iterdir() if p.is_file() and p.suffix in (".yml", ".yaml"))
+    require(len(candidates) <= MAX_WORKFLOW_FILES, f"More than {MAX_WORKFLOW_FILES} workflow files")
+    for path in candidates:
+        require(path.stat().st_size <= MAX_WORKFLOW_BYTES, f"Workflow file {path.name} exceeds 1 MiB")
+        raw = path.read_bytes()
+        require(len(raw) <= MAX_WORKFLOW_BYTES, f"Workflow file {path.name} exceeds 1 MiB")
+        contents = raw.decode("utf-8", errors="replace")
+        if PREPARE_ACTION_PATTERN.search(contents):
+            return True
+    return False
+
+
 def stale_last_release_sha(root, config, manifest):
     if "last-release-sha" not in config:
         return
@@ -250,20 +272,29 @@ def stale_last_release_sha(root, config, manifest):
     inc_v = pkg_config.get("include-v-in-tag", config.get("include-v-in-tag", True))
     tag = f"v{version}" if inc_v else version
 
+    if not creates_release_tags(root):
+        return
+
+    is_shallow = command(["git", "rev-parse", "--is-shallow-repository"], cwd=str(root))
+    require(
+        is_shallow != "true",
+        "Shallow clone: the last-release-sha check needs full history and tags; check out with fetch-depth: 0",
+    )
+
     try:
         tag_commit = command(["git", "rev-parse", "--verify", f"{tag}^{{commit}}"], cwd=str(root))
     except ValidationError as exc:
         raise ValidationError(
-            f"Tag {tag!r} commit missing locally; fetch full history and tags (fetch-depth: 0)"
+            f"Release tag {tag!r} is absent although a workflow runs release-helper actions/prepare; "
+            f"push tag {tag!r} on the release {version} commit, "
+            "or remove last-release-sha from release-please-config.json"
         ) from exc
 
     last_sha = config["last-release-sha"]
     try:
         last_commit = command(["git", "rev-parse", "--verify", f"{last_sha}^{{commit}}"], cwd=str(root))
     except ValidationError as exc:
-        raise ValidationError(
-            f"last-release-sha {last_sha!r} commit missing locally; fetch full history and tags (fetch-depth: 0)"
-        ) from exc
+        raise ValidationError(f"last-release-sha {last_sha!r} is not a commit in this repository") from exc
 
     if last_commit == tag_commit:
         return

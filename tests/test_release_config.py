@@ -117,7 +117,7 @@ class ReleaseConfigSchemaTests(Workspace):
 
 
 class StaleLastReleaseShaTests(Workspace):
-    def make_git_repo(self):
+    def make_git_repo(self, tagging=True):
         repo_dir = self.root / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
         command(["git", "init", "-b", "main"], cwd=str(repo_dir))
@@ -126,6 +126,13 @@ class StaleLastReleaseShaTests(Workspace):
 
         file1 = repo_dir / "file.txt"
         file1.write_text("initial\n", encoding="utf-8")
+        if tagging:
+            wf = repo_dir / ".github" / "workflows" / "prepare-release.yml"
+            wf.parent.mkdir(parents=True, exist_ok=True)
+            wf.write_text(
+                "      - uses: jellysin/release-helper/actions/prepare@0123456789abcdef0123456789abcdef01234567 # v1.6.0\n",
+                encoding="utf-8",
+            )
         command(["git", "add", "."], cwd=str(repo_dir))
         command(["git", "commit", "-m", "Commit 1"], cwd=str(repo_dir))
         commit1 = command(["git", "rev-parse", "HEAD"], cwd=str(repo_dir))
@@ -183,7 +190,10 @@ class StaleLastReleaseShaTests(Workspace):
         repo_dir, commit1, _commit2 = self.make_git_repo()
         config = {"last-release-sha": commit1}
         manifest = {".": "1.0.0"}
-        with self.assertRaisesRegex(ValidationError, "Tag 'v1.0.0' commit missing locally.*fetch-depth: 0"):
+        with self.assertRaisesRegex(
+            ValidationError,
+            r"Release tag 'v1\.0\.0' is absent although a workflow runs release-helper actions/prepare",
+        ):
             releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
 
     def test_missing_last_release_sha_fails_closed(self):
@@ -192,8 +202,93 @@ class StaleLastReleaseShaTests(Workspace):
         nonexistent = "0" * 40
         config = {"last-release-sha": nonexistent}
         manifest = {".": "1.0.0"}
-        with self.assertRaisesRegex(ValidationError, "last-release-sha .* commit missing locally.*fetch-depth: 0"):
+        with self.assertRaisesRegex(
+            ValidationError,
+            r"last-release-sha '0000000000000000000000000000000000000000' is not a commit in this repository",
+        ):
             releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+
+    def test_shallow_clone_fails_with_remedy(self):
+        repo_dir, _commit1, commit2 = self.make_git_repo(tagging=True)
+        command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", commit2], cwd=str(repo_dir))
+        clone_dir = self.root / "clone"
+        command(["git", "clone", "--depth", "1", f"file://{repo_dir}", str(clone_dir)])
+        config = {"last-release-sha": commit2}
+        manifest = {".": "1.0.0"}
+        with self.assertRaisesRegex(
+            ValidationError,
+            r"Shallow clone: the last-release-sha check needs full history and tags; check out with fetch-depth: 0",
+        ):
+            releaseconfig.stale_last_release_sha(clone_dir, config, manifest)
+
+    def test_tagless_consumer_passes_without_git_call(self):
+        repo_dir, _commit1, commit2 = self.make_git_repo(tagging=False)
+        config = {"last-release-sha": commit2}
+        manifest = {".": "1.0.0"}
+        with patch("jellysin_tooling.releaseconfig.command") as mock_command:
+            releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+            mock_command.assert_not_called()
+
+    def test_tagging_consumer_named_error(self):
+        repo_dir, commit1, _commit2 = self.make_git_repo(tagging=True)
+        config = {"last-release-sha": commit1}
+        manifest = {".": "1.0.0"}
+        with self.assertRaises(ValidationError) as ctx:
+            releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+        err = str(ctx.exception)
+        self.assertIn("v1.0.0", err)
+        self.assertIn("push tag", err)
+        self.assertIn("remove last-release-sha", err)
+
+    def test_detection_boundary_prepare_actions(self):
+        dir_local = self.root / "local-prepare"
+        wf_local = dir_local / ".github" / "workflows" / "prepare.yml"
+        wf_local.parent.mkdir(parents=True, exist_ok=True)
+        wf_local.write_text("      - uses: ./actions/prepare\n", encoding="utf-8")
+        self.assertTrue(releaseconfig.creates_release_tags(dir_local))
+
+        dir_comment = self.root / "comment-prepare"
+        wf_comment = dir_comment / ".github" / "workflows" / "ci.yml"
+        wf_comment.parent.mkdir(parents=True, exist_ok=True)
+        wf_comment.write_text(
+            "# uses: jellysin/release-helper/actions/prepare@0123456789abcdef0123456789abcdef01234567\n",
+            encoding="utf-8",
+        )
+        self.assertFalse(releaseconfig.creates_release_tags(dir_comment))
+
+        dir_other = self.root / "other-prepare"
+        wf_other = dir_other / ".github" / "workflows" / "ci.yml"
+        wf_other.parent.mkdir(parents=True, exist_ok=True)
+        wf_other.write_text("      - uses: ./actions/prepare-other\n", encoding="utf-8")
+        self.assertFalse(releaseconfig.creates_release_tags(dir_other))
+
+        dir_other2 = self.root / "other2-prepare"
+        wf_other2 = dir_other2 / ".github" / "workflows" / "ci.yml"
+        wf_other2.parent.mkdir(parents=True, exist_ok=True)
+        wf_other2.write_text(
+            "      - uses: jellysin/release-helper/actions/prepare-other@0123456789abcdef0123456789abcdef01234567\n",
+            encoding="utf-8",
+        )
+        self.assertFalse(releaseconfig.creates_release_tags(dir_other2))
+
+    def test_workflow_file_over_1_mib_fails_naming_file(self):
+        dir_large = self.root / "large-workflow"
+        wf_large = dir_large / ".github" / "workflows" / "large.yml"
+        wf_large.parent.mkdir(parents=True, exist_ok=True)
+        wf_large.write_bytes(b"x" * (1024 * 1024 + 1))
+        with self.assertRaises(ValidationError) as ctx:
+            releaseconfig.creates_release_tags(dir_large)
+        self.assertIn("large.yml", str(ctx.exception))
+
+    def test_workflow_file_count_bound_fails_closed(self):
+        workflows = self.root / "many-workflows" / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        for index in range(releaseconfig.MAX_WORKFLOW_FILES):
+            (workflows / f"w{index:03}.yml").write_text("on: push\n", encoding="utf-8")
+        self.assertFalse(releaseconfig.creates_release_tags(workflows.parent.parent))
+        (workflows / "zz-prepare.yml").write_text("      - uses: ./actions/prepare\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValidationError, "More than 200 workflow files"):
+            releaseconfig.creates_release_tags(workflows.parent.parent)
 
     def test_no_last_release_sha_makes_no_git_call(self):
         with patch("jellysin_tooling.releaseconfig.command") as mock_command:
@@ -254,7 +349,8 @@ class CheckPolicyCliEndToEndTests(Workspace):
         workflows = repo_dir / ".github" / "workflows"
         workflows.mkdir(parents=True)
         (workflows / "ci.yml").write_text(
-            "- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n",
+            "- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n"
+            "- uses: jellysin/release-helper/actions/prepare@0123456789abcdef0123456789abcdef01234567\n",
             encoding="utf-8",
         )
 
