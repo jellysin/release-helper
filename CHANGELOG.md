@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.1](https://github.com/jellysin/release-helper/compare/v1.6.0...v1.6.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **check:** skip the tag comparison in repositories that never tag ([#96](https://github.com/jellysin/release-helper/issues/96)) ([bdb5a32](https://github.com/jellysin/release-helper/commit/bdb5a3240952b55b295d68ac131cf727086b552a))
+* **ci:** wait for this commit's release before failing its tag ([#97](https://github.com/jellysin/release-helper/issues/97)) ([1c165df](https://github.com/jellysin/release-helper/commit/1c165df856a84bb8c0bf2d1d549ae7f6ca49fa30))
+* **release:** name the request and HTTP status of a refused label call ([#93](https://github.com/jellysin/release-helper/issues/93)) ([3a911ec](https://github.com/jellysin/release-helper/commit/3a911ec22dcf0ad6a53e5866b7143a207c30abb9))
+
 ## [1.6.0](https://github.com/jellysin/release-helper/compare/v1.5.0...v1.6.0) (2026-10-19)
 
 
