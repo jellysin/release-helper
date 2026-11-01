@@ -28,7 +28,7 @@ generated agent context against `AGENTS.md`.
 [coderabbit]: https://coderabbit.ai
 [codacy-badge]: https://app.codacy.com/project/badge/Grade/6f6fa8ca436c4553806af0441812403d
 [codacy]: https://app.codacy.com/gh/jellysin/release-helper/dashboard
-[codefactor-badge]: https://www.codefactor.io/repository/github/jellysin/release-helper/badge
+[codefactor-badge]: https://img.shields.io/codefactor/grade/github/jellysin/release-helper
 [codefactor]: https://www.codefactor.io/repository/github/jellysin/release-helper
 
 Shared, versioned build and release tools for independent Jellyfin 12 plugins.
