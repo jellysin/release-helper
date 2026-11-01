@@ -179,6 +179,16 @@ jobs:
         with:
           manifest: ${{ runner.temp }}/floor.json
           image: jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e
+      - name: A real Jellyfin 12.2 server offers the floor fixture
+        uses: ./actions/server-check
+        with:
+          manifest: ${{ runner.temp }}/floor.json
+          image: jellyfin/jellyfin:12.2@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037
+      - name: A real Jellyfin 12.3 server offers the floor fixture
+        uses: ./actions/server-check
+        with:
+          manifest: ${{ runner.temp }}/floor.json
+          image: jellyfin/jellyfin:12.3@sha256:2038fe038ab3876a80f6e7b7e0aef6607b032c7dc0c9b3ad3296d0b2eba3bbb5
       # The step passes only on the refusal it expects; any other failure fails it.
       - name: The same server refuses the wrong-abi fixture
         run: |
