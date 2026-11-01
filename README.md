@@ -22,14 +22,12 @@ generated agent context against `AGENTS.md`.
 [praetor-hiss-agents]: https://github.com/jellysin/release-helper/blob/HEAD/AGENTS.md
 <!-- praetor:readme-governance:end -->
 
-[![CodeRabbit reviews][coderabbit-badge]][coderabbit] [![Codacy grade][codacy-badge]][codacy] [![CodeFactor grade][codefactor-badge]][codefactor]
+[![CodeRabbit reviews][coderabbit-badge]][coderabbit] [![Codacy grade][codacy-badge]][codacy]
 
 [coderabbit-badge]: https://img.shields.io/coderabbit/prs/github/jellysin/release-helper
 [coderabbit]: https://coderabbit.ai
 [codacy-badge]: https://app.codacy.com/project/badge/Grade/6f6fa8ca436c4553806af0441812403d
 [codacy]: https://app.codacy.com/gh/jellysin/release-helper/dashboard
-[codefactor-badge]: https://img.shields.io/codefactor/grade/github/jellysin/release-helper
-[codefactor]: https://www.codefactor.io/repository/github/jellysin/release-helper
 
 Shared, versioned build and release tools for independent Jellyfin 12 plugins.
 Python's standard library handles packaging and plugin repository validation; GitHub CLI
