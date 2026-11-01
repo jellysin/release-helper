@@ -2,12 +2,12 @@
 name = "jellysin-release-helper"
 version = "1.6.0" # x-release-please-version
 description = "Build-time release and plugin repository tooling for JellySin plugins"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 license = "EUPL-1.2"
 dependencies = []
 
 [tool.ruff]
-# Python 3.13 syntax, though 3.14 is the floor: semgrep 1.180 cannot parse the 3.14 unparenthesized
+# Python 3.13 syntax, though 3.15 is the floor: semgrep 1.180 cannot parse the 3.14 unparenthesized
 # except clause, and a line it cannot parse is a line it does not scan.
 target-version = "py313"
 line-length = 120
