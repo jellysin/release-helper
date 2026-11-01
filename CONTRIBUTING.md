@@ -10,7 +10,7 @@ current base.
 Use the Python version pinned in `.python-version`; CI and the composite actions read
 that file. The reusable workflow reads it from its own commit and refuses any other
 `python3` before its standard-library programs run. Production code supports Python
-3.14 and newer, the minor CI tests, and needs no pip installation. Development dependencies are pinned and
+3.15 and newer, the minor CI tests, and needs no pip installation. Development dependencies are pinned and
 hash checked. `make bootstrap` installs them into `.venv` with `--require-hashes`; `make verify-all`
 uses that environment and fails, naming `make bootstrap`, when `.venv` is missing or older than
 `requirements-dev.txt`. The commands it runs, with `.venv/bin/python` as `python`:
@@ -45,7 +45,7 @@ runtime and start no container. The proof on a real Jellyfin server is two steps
 exit status 1 and its `does not offer` line. A change of `SERVER_IMAGE` is reviewed
 like a dependency update, tag and digest together; those two steps run it before merge.
 
-`pyproject.toml` declares supported runtimes (`>=3.14`, the minor of the pin; tests/test_python_pin.py holds the two equal); `.python-version` pins the
+`pyproject.toml` declares supported runtimes (`>=3.15`, the minor of the pin; tests/test_python_pin.py holds the two equal); `.python-version` pins the
 exact CI interpreter. Renovate's [PEP 621 manager](https://docs.renovatebot.com/modules/manager/pep621/#dependency-types)
 identifies the former as `requires-python`. Its scoped
 [`widen` strategy](https://docs.renovatebot.com/modules/versioning/pep440/#rangesconstraints)
