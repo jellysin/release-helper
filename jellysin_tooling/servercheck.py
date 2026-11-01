@@ -15,7 +15,7 @@ from .common import JELLYFIN_ABI_MAJOR, MAX_JSON, ValidationError, decode_json, 
 from .github import command, read_response
 
 # The reviewed default server; tag and digest change together in one reviewed update.
-SERVER_IMAGE = "jellyfin/jellyfin:12.2@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037"
+SERVER_IMAGE = "jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771"
 IMAGE = re.compile(r"(jellyfin/jellyfin)(?::[A-Za-z0-9][A-Za-z0-9._-]{0,63})?@(sha256:[0-9a-f]{64})")
 SERVER_VERSION = re.compile(r"[0-9]{1,5}\.[0-9]{1,5}\.[0-9]{1,5}")
 # The server serves its web directory at /web; files mounted there need no second container and no host network.
