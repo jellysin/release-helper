@@ -66,7 +66,7 @@ jobs:
               for issue in issues:
                   gh('--method', 'POST', f'repos/{REPO}/issues/{issue["number"]}/comments', '-f', f'body=The sandbox cycle for main {sha} succeeded: {newest["html_url"]}')
                   gh('--method', 'PATCH', f'repos/{REPO}/issues/{issue["number"]}', '-f', 'state=closed')
-                  print(f'closed #{issue["number"]}')
+                  print(f'closed issue {issue["number"]}')
           elif newest is not None and newest['status'] == 'completed':
               problem = f'The newest sandbox release cycle for main {sha} concluded {newest["conclusion"]}: {newest["html_url"]}'
           elif newest is not None:
@@ -79,8 +79,8 @@ jobs:
               body = f'{problem}\n\njellysin/release-helper-sandbox runs a full release cycle with release-helper main every hour (.github/workflows/cycle.yml there). This issue closes on the next successful cycle for main.'
               if issues:
                   gh('--method', 'PATCH', f'repos/{REPO}/issues/{issues[0]["number"]}', '-f', f'body={body}')
-                  print(f'updated #{issues[0]["number"]}: {problem}')
+                  print(f'updated issue {issues[0]["number"]}: {problem}')
               else:
                   created = gh('--method', 'POST', f'repos/{REPO}/issues', '-f', f'title={TITLE}', '-f', f'body={body}')
-                  print(f'opened #{created["number"]}: {problem}')
+                  print(f'opened issue {created["number"]}: {problem}')
           PY

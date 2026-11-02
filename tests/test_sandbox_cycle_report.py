@@ -64,7 +64,7 @@ class SandboxCycleReportTests(StepCase):
             self.writes(current), [("POST", f"repos/{REPO}/issues/5/comments"), ("PATCH", f"repos/{REPO}/issues/5")]
         )
         self.assertIn("state=closed", current["issue_writes"][1])
-        self.assertEqual(lines[-1], "closed #5")
+        self.assertEqual(lines[-1], "closed issue 5")
 
     def test_a_failed_cycle_for_main_opens_the_issue(self):
         current = state([cycle(4, HEAD, "failure"), cycle(3, HEAD)])
