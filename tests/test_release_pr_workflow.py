@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from textwrap import dedent
 
-from tests.stub_gh import PENDING, SECRET, TAGGED
+from tests.stub_gh import PENDING, RAW_ERROR_BODY, TAGGED
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-please.yml"
 STUB = Path(__file__).with_name("stub_gh.py")
@@ -91,7 +91,7 @@ class StepCase(unittest.TestCase):
         done = self.execute(state, **environment)
         self.assertNotEqual(0, done.returncode)
         self.assertIn(message, done.stderr)
-        self.assertNotIn(SECRET, done.stdout + done.stderr.replace("stub gh", ""))
+        self.assertNotIn(RAW_ERROR_BODY, done.stdout + done.stderr.replace("stub gh", ""))
         return done
 
 

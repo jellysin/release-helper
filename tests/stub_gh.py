@@ -7,7 +7,8 @@ from pathlib import Path
 from urllib.parse import unquote
 
 PENDING, TAGGED = "autorelease: pending", "autorelease: tagged"
-SECRET = "secret response body"
+# Marker for a refused request's raw body; tests assert the workflow never prints it.
+RAW_ERROR_BODY = "raw error response body"
 
 
 def release_listing(state):
@@ -82,8 +83,8 @@ def main():
     if failing:
         # The real gh ends its error line with the HTTP status of a refused request, after the message.
         status = state.get("status", 502)
-        print(json.dumps({"message": SECRET}))
-        print(f"gh: {SECRET}" + (f" (HTTP {status})" if status else ""), file=sys.stderr)
+        print(json.dumps({"message": RAW_ERROR_BODY}))
+        print(f"gh: {RAW_ERROR_BODY}" + (f" (HTTP {status})" if status else ""), file=sys.stderr)
         return 1
     if answer is not None:
         print(json.dumps(answer))
