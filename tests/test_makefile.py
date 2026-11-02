@@ -6,6 +6,7 @@ import shutil
 import subprocess  # nosec B404
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -47,10 +48,13 @@ def create_python3_stub(stub_dir):
     stub_py.chmod(0o755)
 
 
-def run_tool(tool, *args, cwd=REPO_ROOT, env=None, check=False):
-    """Execute a CLI tool with a sanitized environment and return the completed process."""
-    return subprocess.run(  # nosec B603
-        [tool, *args],
+def run_make(*args, cwd=REPO_ROOT, env=None, check=False):
+    """Run the make binary found on PATH with a sanitized environment and return the process."""
+    if MAKE is None or Path(MAKE).name != "make":
+        raise RuntimeError(f"expected a make binary on PATH, found {MAKE!r}")
+    # Fixed make binary from shutil.which, argument list, no shell, test-controlled arguments.
+    return subprocess.run(  # nosec B603  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+        [MAKE, *args],
         cwd=cwd,
         env=clean_env() if env is None else env,
         capture_output=True,
@@ -58,11 +62,6 @@ def run_tool(tool, *args, cwd=REPO_ROOT, env=None, check=False):
         check=check,
         timeout=30,
     )
-
-
-def run_make(*args, cwd=REPO_ROOT, env=None, check=False):
-    """Run make with the given arguments under the sanitized environment."""
-    return run_tool(MAKE, *args, cwd=cwd, env=env, check=check)
 
 
 @unittest.skipUnless(MAKE, "make is not installed")
@@ -226,6 +225,24 @@ class TestMakefile(unittest.TestCase):
             )
             self.assertNotEqual(env_res.returncode, 0)
             self.assertIn(f"{dollar_venv}/bin/python is missing", env_res.stderr)
+
+
+class TestRunMakeGuard(unittest.TestCase):
+    """run_make runs only a binary named make."""
+
+    def test_negative_non_make_binary_refused(self):
+        """A PATH lookup that resolved to another binary is refused before any process starts."""
+        with unittest.mock.patch(f"{__name__}.MAKE", "/bin/sh"), unittest.mock.patch("subprocess.run") as run:
+            with self.assertRaisesRegex(RuntimeError, "expected a make binary"):
+                run_make("--version")
+        run.assert_not_called()
+
+    def test_negative_missing_make_refused(self):
+        """A missing make is refused with a message instead of a TypeError from subprocess."""
+        with unittest.mock.patch(f"{__name__}.MAKE", None), unittest.mock.patch("subprocess.run") as run:
+            with self.assertRaisesRegex(RuntimeError, "expected a make binary"):
+                run_make("--version")
+        run.assert_not_called()
 
 
 if __name__ == "__main__":
