@@ -1,6 +1,7 @@
 <!-- markdownlint-disable MD013 -->
 <!-- Compiled automatically by praetorctl compile-context from AGENTS.md. DO NOT EDIT DIRECTLY. -->
 
+<!-- markdownlint-capture -->
 <!-- markdownlint-disable MD013 -->
 # jellysin/release-helper Agent Operating Harness
 
@@ -15,7 +16,7 @@ Pass = exit 0. Signed Ed25519 Exit-0 receipt only from `praetorctl gate run`; re
 
 ## Core Directives & Invariants
 
-Adopted check = coverage state + mechanism; else audit scanner; else `unknown`. Gates = (none: no generated `make verify-all`, no praetor `lefthook.yml`); edits not reflected.
+Adopted check = coverage state + catalog path; else audit scanner; else `unknown`. Gates = (none: no generated `make verify-all`, no praetor `lefthook.yml`); edits not reflected.
 
 | Invariant | Rule | Adopted check | On fail |
 | :--- | :--- | :--- | :--- |
@@ -95,7 +96,7 @@ praetorctl audit
 make verify-all
 ```
 
-<!-- markdownlint-enable MD013 -->
+<!-- markdownlint-restore -->
 <!-- markdownlint-disable MD025 -->
 <!-- praetor:harness:end -->
 

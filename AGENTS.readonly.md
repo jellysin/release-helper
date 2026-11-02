@@ -1,3 +1,4 @@
+<!-- markdownlint-capture -->
 <!-- markdownlint-disable MD013 -->
 # jellysin/release-helper Agent Operating Harness
 
@@ -7,7 +8,7 @@ Run read-only: file edits, state mutations, commits prohibited. Mutating steps d
 
 ## Core Directives & Invariants
 
-Adopted check = coverage state + mechanism; else audit scanner; else `unknown`. Gates = (none: no generated verification gate, no praetor `lefthook.yml`); edits not reflected.
+Adopted check = coverage state + catalog path; else audit scanner; else `unknown`. Gates = (none: no generated verification gate, no praetor `lefthook.yml`); edits not reflected.
 
 | Invariant | Rule | Adopted check | On fail |
 | :--- | :--- | :--- | :--- |
@@ -88,7 +89,7 @@ praetorctl compile-context --verify
 praetorctl audit
 ```
 
-<!-- markdownlint-enable MD013 -->
+<!-- markdownlint-restore -->
 <!-- markdownlint-disable MD025 -->
 <!-- praetor:harness:end -->
 

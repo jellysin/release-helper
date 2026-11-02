@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # Praetor writes these files; see pyproject.toml for the reason (cordanaLLM/praetor#1204).
 EXPIRES = datetime.date(2027, 1, 9)
-LINT_EXCEPTIONS = {}
+LINT_EXCEPTIONS = {".config/lefthook/scripts/common.py": ["UP036"]}
 FORMAT_EXCEPTIONS = [
     ".config/agent/hooks/block_evasion.py",
     ".config/lefthook/scripts/checkpoint.py",
