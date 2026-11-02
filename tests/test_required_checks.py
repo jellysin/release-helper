@@ -211,7 +211,12 @@ class RequiredChecksTests(unittest.TestCase):
                 target = temp_path / p.name
                 content = p.read_text(encoding="utf-8")
                 if p.name == "codeql.yml":
-                    content = content.replace("language: [python, actions]", "language: [python]")
+                    data = yaml.safe_load(content)
+                    languages = data["jobs"]["analyze"]["strategy"]["matrix"]["language"]
+                    self.assertIn("actions", languages)
+                    languages.remove("actions")
+                    self.assertTrue(languages)
+                    content = yaml.safe_dump(data, sort_keys=False)
                 target.write_text(content, encoding="utf-8")
 
             reported = reported_checks(temp_path)
