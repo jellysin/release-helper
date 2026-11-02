@@ -58,6 +58,12 @@
           },
           {
             "context": "vulnerabilities (trivy)"
+          },
+          {
+            "context": "analyze (python)"
+          },
+          {
+            "context": "analyze (actions)"
           }
         ],
         "strict_required_status_checks_policy": true
