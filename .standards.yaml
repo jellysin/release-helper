@@ -56,4 +56,6 @@ release:
     paths: [tests/e2e/**]
     # #122 and #123 shipped before tests/e2e existed; their behaviour is now covered by
     # tests/e2e/test_makefile_spaced_venv.py and tests/e2e/test_source_dot_repository.py.
-    since: e513af908c139b03054e93dd855e9e432e1e3b89
+    # #126 shipped without an e2e test; its behaviour is now covered by
+    # tests/e2e/test_prepare_release_merge.py and tests/e2e/test_publish_bundle_retry.py.
+    since: 17153e53b83d2b3c36d8542659b0edf51ea8495b
