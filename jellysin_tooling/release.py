@@ -4,6 +4,8 @@ import base64
 import hashlib
 import os
 import tempfile
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
@@ -24,6 +26,17 @@ from .common import (
     semver,
 )
 from .github import command, verify_attestation
+
+
+@dataclass(frozen=True)
+class _ReleaseContext:
+    """Keep the release identity and approved signing runner together across publication retries."""
+
+    repo: str
+    tag: str
+    release_id: int
+    signer_workflow: str = ".github/workflows/release.yml"
+    runner: Callable = command
 
 
 def exact_tag(tag, cwd=None):
@@ -137,14 +150,13 @@ def local_artifacts(directory, release):
     return files
 
 
-def reconcile_assets(
-    client, remote, files, repo, tag, *, signer_workflow=".github/workflows/release.yml", runner=command
-):
-    """Find missing assets, retaining a differing uploaded bundle only after digest and identity verification."""
+def reconcile_assets(client, remote, files, context):
+    """Check artifact equality, then verify every retained bundle's digest and exact signer identity."""
     require(len(files) <= MAX_FILES, "Too many local release artifacts")
-    assets = release_assets(remote, repo, tag, authenticated_draft=remote.get("draft") is True)
+    assets = release_assets(remote, context.repo, context.tag, authenticated_draft=remote.get("draft") is True)
     require(assets.keys() <= files.keys(), "Unexpected assets on release")
     missing = []
+    bundles = {}
     for name, data in sorted(files.items()):
         if name not in assets:
             require(remote.get("draft") is True, "Published release is incomplete; do not mutate it")
@@ -154,41 +166,44 @@ def reconcile_assets(
         require(assets[name]["size"] == len(data) or bundle, "Existing asset differs; use a new release version")
         if bundle:
             require(assets[name]["size"] <= MAX_BUNDLE, f"Signature bundle exceeds size limit: {name}")
-        remote_bytes = client.download_asset(repo, assets[name]["id"])
+        remote_bytes = client.download_asset(context.repo, assets[name]["id"])
         require(len(remote_bytes) == assets[name]["size"], "Existing asset differs; use a new release version")
-        if remote_bytes != data:
-            require(bundle, "Existing asset differs; use a new release version")
-            asset_name = name.removesuffix(".sigstore.json")
-            require(asset_name in files, f"Unexpected signature bundle: {name}")
-            if asset_name in assets:
-                signed = assets[asset_name]
-                require(
-                    signed["size"] == len(files[asset_name])
-                    and client.download_asset(repo, signed["id"]) == files[asset_name],
-                    "Existing asset differs; use a new release version",
-                )
-            verify_uploaded_bundle(remote_bytes, name, files[asset_name], repo, tag, signer_workflow, runner)
-            files[name] = remote_bytes
+        if bundle:
+            bundles[name] = remote_bytes
+        else:
+            require(remote_bytes == data, "Existing asset differs; use a new release version")
+    for name, remote_bytes in bundles.items():
+        asset_name = name.removesuffix(".sigstore.json")
+        require(asset_name in files, f"Unexpected signature bundle: {name}")
+        if asset_name in assets:
+            signed = assets[asset_name]
+            require(
+                signed["size"] == len(files[asset_name])
+                and client.download_asset(context.repo, signed["id"]) == files[asset_name],
+                "Existing asset differs; use a new release version",
+            )
+        verify_uploaded_bundle(remote_bytes, name, files[asset_name], context)
+        files[name] = remote_bytes
     return missing
 
 
-def verify_uploaded_bundle(bundle_bytes, bundle_name, asset_bytes, repo, tag, signer_workflow, runner):
+def verify_uploaded_bundle(bundle_bytes, bundle_name, asset_bytes, context):
     """Verify the retained bundle against the local artifact and exact approved workflow's tag identity."""
-    require(signer_workflow in SIGNER_WORKFLOWS, "Unapproved signer workflow")
+    require(context.signer_workflow in SIGNER_WORKFLOWS, "Unapproved signer workflow")
     validate_bundle_bytes(bundle_bytes, bundle_name, asset_bytes)
     try:
         with tempfile.TemporaryDirectory(prefix="jellysin-bundle-") as temporary:
             bundle_path, asset_path = Path(temporary) / "bundle.sigstore.json", Path(temporary) / "artifact"
             bundle_path.write_bytes(bundle_bytes)
             asset_path.write_bytes(asset_bytes)
-            runner(
+            context.runner(
                 [
                     "cosign",
                     "verify-blob",
                     "--bundle",
                     str(bundle_path),
                     "--certificate-identity",
-                    f"https://github.com/{repo}/{signer_workflow}@refs/tags/{tag}",
+                    f"https://github.com/{context.repo}/{context.signer_workflow}@refs/tags/{context.tag}",
                     "--certificate-oidc-issuer",
                     "https://token.actions.githubusercontent.com",
                     str(asset_path),
@@ -233,19 +248,18 @@ def remove_draft_starters(client, pending, repo, tag, release_id, runner):
         runner(["gh", "api", "--method", "DELETE", f"repos/{repo}/releases/assets/{asset['id']}"])
 
 
-def upload_missing(
-    client, directory, files, missing, repo, tag, release_id, runner, *, signer_workflow=".github/workflows/release.yml"
-):
+def upload_missing(client, directory, files, missing, context):
     """Reconcile the exact draft before each missing upload, using the approved bundle signer on retries."""
     for name in missing:
-        current = read_release(client, repo, tag, release_id)
+        current = read_release(client, context.repo, context.tag, context.release_id)
         require(current.get("draft") is True, "Release is no longer a draft")
-        if name not in reconcile_assets(
-            client, current, files, repo, tag, signer_workflow=signer_workflow, runner=runner
-        ):
+        if name not in reconcile_assets(client, current, files, context):
             continue
-        endpoint = f"https://uploads.github.com/repos/{repo}/releases/{release_id}/assets?name={quote(name, safe='')}"
-        runner(
+        endpoint = (
+            f"https://uploads.github.com/repos/{context.repo}/releases/{context.release_id}/assets"
+            f"?name={quote(name, safe='')}"
+        )
+        context.runner(
             [
                 "gh",
                 "api",
@@ -371,14 +385,15 @@ def publish(
     files = attested_artifacts(directory, files, repo, tag, signer_workflow, commit, verifier)
     found = find_release(client, repo, tag)
     release_id = found["id"]
+    context = _ReleaseContext(repo, tag, release_id, signer_workflow, runner)
     remote = read_release(client, repo, tag, release_id)
     remote, pending = draft_starters(remote, files, repo, tag)
-    missing = reconcile_assets(client, remote, files, repo, tag, signer_workflow=signer_workflow, runner=runner)
+    missing = reconcile_assets(client, remote, files, context)
     remove_draft_starters(client, pending, repo, tag, release_id, runner)
-    upload_missing(client, directory, files, missing, repo, tag, release_id, runner, signer_workflow=signer_workflow)
+    upload_missing(client, directory, files, missing, context)
     refreshed = read_release(client, repo, tag, release_id)
     require(
-        not reconcile_assets(client, refreshed, files, repo, tag, signer_workflow=signer_workflow, runner=runner),
+        not reconcile_assets(client, refreshed, files, context),
         "Release upload is incomplete",
     )
     if refreshed.get("draft") is True:

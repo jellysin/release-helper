@@ -220,7 +220,10 @@ Recipe for a plugin repository:
 1. Add `.github/workflows/prepare-release.yml` with `workflow_dispatch` inputs `tag`
    and `commit`. In Actions the command accepts this workflow file only, dispatched
    manually on `main`, and a commit that is an ancestor of the workflow's own commit.
-2. Give the job `contents: write` and check out with `fetch-depth: 0`.
+2. Give the job `contents: write` and `pull-requests: read`, then check out with
+   `fetch-depth: 0`. The read permission authorizes the
+   [commit-associated pull request lookup](https://docs.github.com/en/rest/commits/commits#list-pull-requests-associated-with-a-commit)
+   used to approve the release commit.
 3. Call `actions/prepare` with `tag`, `commit` and the built-in `token`; add
    `changelog-path` for release notes in the draft.
 4. Dispatch `release.yml` on the new tag ref. A tag created with the built-in token

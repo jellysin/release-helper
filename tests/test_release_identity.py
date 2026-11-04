@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from jellysin_tooling.common import ValidationError
 from jellysin_tooling.release import (
+    _ReleaseContext,
     find_release,
     local_artifacts,
     publish,
@@ -162,11 +163,12 @@ class ReleaseMutationIdentityTests(Workspace):
         remote = client.add(FIRST, release, output, draft=True)
         files = local_artifacts(output, release)
         runner = Mock()
-        upload_missing(client, output, files, ["release.json"], REPO, TAG, remote["id"], runner)
+        context = _ReleaseContext(REPO, TAG, remote["id"], runner=runner)
+        upload_missing(client, output, files, ["release.json"], context)
         runner.assert_not_called()
         remote["draft"] = False
         with self.assertRaisesRegex(ValidationError, "no longer a draft"):
-            upload_missing(client, output, files, ["release.json"], REPO, TAG, remote["id"], runner)
+            upload_missing(client, output, files, ["release.json"], context)
         runner.assert_not_called()
 
     def test_published_draft_and_changed_tag_stop_remaining_mutations(self):

@@ -90,7 +90,10 @@ Preparation is the step between: `prepare`, dispatched manually from
 `prepare-release.yml` on `main`, creates the exact tag on an approved main commit and
 one unpublished draft. It checks tag, commit, version file and remote state before the
 first write, creates only what is missing, and leaves an existing draft untouched. It
-takes the created draft from the answer of its own write, since the release listing can
+requires job-scoped `contents: write` and `pull-requests: read` permissions to create
+the tag and draft and check the commit's merged release PR. Dispatching `release.yml`
+also requires job-scoped `actions: write`. Preparation takes the created draft from
+the answer of its own write, since the release listing can
 lag behind a creation by seconds. A
 published or immutable release with the tag, or the tag on another commit, is a
 conflict that needs a new version. Every write of the command has a test that proves

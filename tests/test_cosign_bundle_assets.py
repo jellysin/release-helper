@@ -16,17 +16,37 @@ RELEASE_WORKFLOW = ".github/workflows/release.yml"
 
 
 class CosignBundlePublicationTests(Workspace):
+    """Exercise bundle publication using local git fixtures and simulated remote operations."""
+
     def make_git_repo(self, tag="v1.0.0"):
+        """Create fixture history without invoking signing tools or workstation hooks."""
         repo_dir = self.root / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        command(["git", "init"], cwd=str(repo_dir))
-        command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
-        command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
+
+        def git(*arguments):
+            """Apply fixture-only options without changing inherited credential configuration."""
+            return command(
+                [
+                    "git",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "tag.gpgsign=false",
+                    "-c",
+                    f"core.hooksPath={repo_dir / 'unused-hooks'}",
+                    *arguments,
+                ],
+                cwd=str(repo_dir),
+            )
+
+        git("init")
+        git("config", "user.name", "Test User")
+        git("config", "user.email", "test@example.com")
         (repo_dir / "README.md").write_text("Test", encoding="utf-8")
-        command(["git", "add", "."], cwd=str(repo_dir))
-        command(["git", "commit", "-m", "Initial commit"], cwd=str(repo_dir))
-        commit = command(["git", "rev-parse", "HEAD"], cwd=str(repo_dir))
-        command(["git", "tag", "-a", tag, "-m", tag], cwd=str(repo_dir))
+        git("add", ".")
+        git("commit", "-m", "Initial commit")
+        commit = git("rev-parse", "HEAD")
+        git("tag", "-a", tag, "-m", tag)
         return repo_dir, commit, tag
 
     def setup_source_release(self, tag="v1.0.0"):
@@ -43,13 +63,27 @@ class CosignBundlePublicationTests(Workspace):
         return repo_dir, commit, tag, repo, output, release, files
 
     def make_runner(self, client, remote, output, writes):
-        def runner(arguments):
+        """Simulate uploads and cosign verification without external commands or network requests."""
+        repo = remote["url"].removeprefix("https://api.github.com/repos/").rsplit("/releases/", 1)[0]
+
+        def runner(arguments, *, timeout=None):
+            """Validate retained bundle bytes and signer arguments, recording only release mutations."""
+            if arguments[0] == "cosign":
+                bundle_path = Path(arguments[3])
+                self.assertEqual(
+                    bundle_path.read_bytes(),
+                    validate_bundle(bundle_path, bundle_path.name, Path(arguments[-1]).read_bytes()),
+                )
+                self.assertIn(
+                    f"https://github.com/{repo}/{BUILD_SIGNED_WORKFLOW}@refs/tags/{remote['tag_name']}", arguments
+                )
+                self.assertEqual(120, timeout)
+                return "verified"
             writes.append(arguments)
             if "POST" in arguments:
                 name = arguments[4].split("name=")[1]
                 asset_id = max([a["id"] for a in remote["assets"]] + [0]) + 1
                 data = (output / name).read_bytes()
-                repo = remote["url"].removeprefix("https://api.github.com/repos/").rsplit("/releases/", 1)[0]
                 url = f"https://github.com/{repo}/releases/download/untagged-fixture-{remote['id']}/{name}"
                 remote["assets"].append(
                     {

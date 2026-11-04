@@ -6,7 +6,13 @@ from urllib.parse import parse_qs, urlsplit
 
 from jellysin_tooling.catalog import collect, release_assets
 from jellysin_tooling.common import MAX_ASSET, ValidationError, digest
-from jellysin_tooling.release import draft_starters, local_artifacts, publish, reconcile_assets
+from jellysin_tooling.release import (
+    _ReleaseContext,
+    draft_starters,
+    local_artifacts,
+    publish,
+    reconcile_assets,
+)
 from tests.fixtures import COMMIT, FIRST, SECOND, FakeGitHub, Workspace, approved
 
 
@@ -83,7 +89,8 @@ class DraftAssetTests(Workspace):
         for asset in remote["assets"]:
             asset["browser_download_url"] = "https://untrusted.test/unused"
         client = Mock(download_asset=Mock(side_effect=lambda _repo, identity: by_id[identity]))
-        self.assertEqual([], reconcile_assets(client, remote, files, FIRST["repository"], release["tag"]))
+        context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"])
+        self.assertEqual([], reconcile_assets(client, remote, files, context))
         self.assertEqual(4, client.download_asset.call_count)
         self.assertTrue(all(call.args[0] == FIRST["repository"] for call in client.download_asset.call_args_list))
         client.download.assert_not_called()

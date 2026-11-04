@@ -7,6 +7,8 @@ from functools import partial
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 from jellysin_tooling import prepare
 from jellysin_tooling.cli import parser, run
 from jellysin_tooling.common import MAX_BODY, ValidationError
@@ -523,17 +525,24 @@ class GitHistoryTests(Workspace):
         self.addCleanup(replaced.stop)
 
     def git(self, *arguments):
-        identity = {"GIT_AUTHOR_NAME": "fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid"}
-        environment = {
-            **identity,
-            "GIT_COMMITTER_NAME": "fixture",
-            "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_SYSTEM": os.devnull,
-            "PATH": os.environ["PATH"],
-        }
+        """Run fixture git without signing or hooks, preserving inherited credential configuration."""
         result = subprocess.run(
-            ["git", *arguments], cwd=self.root, env=environment, capture_output=True, check=True, timeout=30
+            [
+                "git",
+                "-c",
+                "user.name=fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                f"core.hooksPath={self.root / 'unused-hooks'}",
+                *arguments,
+            ],
+            cwd=self.root,
+            capture_output=True,
+            check=True,
+            timeout=30,
         )
         return result.stdout.decode().strip()
 
@@ -566,6 +575,18 @@ class GitHistoryTests(Workspace):
 
 
 class InterfaceTests(Workspace):
+    """Keep preparation's command, action and workflow contracts consistent."""
+
+    def test_prepare_job_grants_pull_request_reads_without_other_permission_changes(self):
+        """The commit-associated PR lookup needs an explicit read grant on the preparation job."""
+        root = Path(__file__).resolve().parents[1]
+        workflow = yaml.safe_load((root / prepare.WORKFLOW).read_text(encoding="utf-8"))
+        self.assertEqual({"contents": "read"}, workflow["permissions"])
+        self.assertEqual(
+            {"contents": "write", "actions": "write", "pull-requests": "read"},
+            workflow["jobs"]["prepare"]["permissions"],
+        )
+
     def test_command_passes_every_option_and_the_real_runner(self):
         base = ["prepare", "--repo", REPO, "--tag", TAG, "--commit", COMMIT]
         cases = (

@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from jellysin_tooling.catalog import collect
 from jellysin_tooling.common import MAX_BUNDLE, ValidationError
 from jellysin_tooling.release import (
+    _ReleaseContext,
     draft_starters,
     exact_tag,
     local_artifacts,
@@ -21,8 +22,10 @@ from tests.fixtures import COMMIT, FIRST, SECOND, FakeGitHub, Workspace, approve
 
 
 class BundleRetryTests(Workspace):
+    """Verify uploaded bundles before retaining bytes from an earlier publication."""
+
     def retry_fixture(self):
-        """Build deterministic artifacts with one differently signed uploaded checksum bundle."""
+        """Build deterministic artifacts with one uploaded checksum bundle for isolated retry assertions."""
         release, output = self.plugin()
         write_bundles(output)
         files = local_artifacts(output, release)
@@ -30,6 +33,10 @@ class BundleRetryTests(Workspace):
         client = FakeGitHub()
         remote = client.add(FIRST, release, output, draft=True)
         bundle = next(asset for asset in remote["assets"] if asset["name"] == "checksums.txt.sigstore.json")
+        files = {
+            name: data for name, data in files.items() if not name.endswith(".sigstore.json") or name == bundle["name"]
+        }
+        remote["assets"] = [asset for asset in remote["assets"] if asset["name"] in files]
         return release, output, client, remote, files, bundle
 
     def replace_bundle(self, client, bundle, data):
@@ -44,9 +51,10 @@ class BundleRetryTests(Workspace):
         self.replace_bundle(client, bundle, uploaded)
         remote["assets"] = [asset for asset in remote["assets"] if asset["name"] != "checksums.txt"]
         runner = Mock()
+        context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"], runner=runner)
         self.assertEqual(
             ["checksums.txt"],
-            reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner),
+            reconcile_assets(client, remote, files, context),
         )
         self.assertEqual(uploaded, files[bundle["name"]])
         runner.assert_called_once()
@@ -63,8 +71,27 @@ class BundleRetryTests(Workspace):
                 original = files[bundle["name"]]
                 self.replace_bundle(client, bundle, make_bundle(files["checksums.txt"], padding="earlier run"))
                 runner = Mock(side_effect=error)
+                context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"], runner=runner)
                 with self.assertRaisesRegex(ValidationError, "cosign verification unavailable or failed") as caught:
-                    reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+                    reconcile_assets(client, remote, files, context)
+                self.assertIs(error, caught.exception.__cause__)
+                self.assertEqual(original, files[bundle["name"]])
+                runner.assert_called_once()
+
+    def test_identical_uploaded_bundle_is_refused_when_cosign_fails(self):
+        """Byte equality must not bypass cryptographic verification on drafts or published releases."""
+        for draft in (True, False):
+            with self.subTest(draft=draft):
+                release, _, client, remote, files, bundle = self.retry_fixture()
+                if not draft:
+                    client.publish(remote)
+                original = files[bundle["name"]]
+                self.assertEqual(original, client.assets[FIRST["repository"], bundle["id"]])
+                error = ValidationError("cosign command failed (1)")
+                runner = Mock(side_effect=error)
+                context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"], runner=runner)
+                with self.assertRaisesRegex(ValidationError, "cosign verification unavailable or failed") as caught:
+                    reconcile_assets(client, remote, files, context)
                 self.assertIs(error, caught.exception.__cause__)
                 self.assertEqual(original, files[bundle["name"]])
                 runner.assert_called_once()
@@ -84,8 +111,9 @@ class BundleRetryTests(Workspace):
             with self.subTest(message=message):
                 self.replace_bundle(client, bundle, data)
                 runner = Mock()
+                context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"], runner=runner)
                 with self.assertRaisesRegex(ValidationError, message):
-                    reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+                    reconcile_assets(client, remote, files, context)
                 runner.assert_not_called()
 
     def test_differing_signed_asset_is_refused_before_bundle_verification(self):
@@ -95,8 +123,9 @@ class BundleRetryTests(Workspace):
         artifact = next(asset for asset in remote["assets"] if asset["name"] == "checksums.txt")
         client.assets[FIRST["repository"], artifact["id"]] = b"x" * artifact["size"]
         runner = Mock()
+        context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"], runner=runner)
         with self.assertRaisesRegex(ValidationError, "Existing asset differs"):
-            reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+            reconcile_assets(client, remote, files, context)
         runner.assert_not_called()
 
     def test_same_size_differing_bundle_is_verified_and_nonbundle_bytes_are_still_refused(self):
@@ -108,19 +137,20 @@ class BundleRetryTests(Workspace):
         self.assertNotEqual(files[bundle["name"]], uploaded)
         self.replace_bundle(client, bundle, uploaded)
         runner = Mock()
-        self.assertEqual(
-            [], reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
-        )
+        context = _ReleaseContext(FIRST["repository"], release["tag"], remote["id"], runner=runner)
+        self.assertEqual([], reconcile_assets(client, remote, files, context))
         runner.assert_called_once()
         artifact = next(asset for asset in remote["assets"] if asset["name"] == "release.json")
         client.assets[FIRST["repository"], artifact["id"]] = b"x" * artifact["size"]
         runner.reset_mock()
         with self.assertRaisesRegex(ValidationError, "Existing asset differs"):
-            reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+            reconcile_assets(client, remote, files, context)
         runner.assert_not_called()
 
 
 class PublicationTests(Workspace):
+    """Exercise immutable publication, resumable uploads and independent plugin identities."""
+
     def test_fresh_retry_keeps_verified_uploaded_bundle_and_uploads_only_missing_asset(self):
         """Plant the retry bug: a new keyless bundle must not replace a verified uploaded bundle."""
         release, output = self.plugin()
@@ -137,6 +167,8 @@ class PublicationTests(Workspace):
 
         def runner(arguments, *, timeout=None):
             """Verify exact downloaded bytes locally and simulate the draft's remaining writes."""
+            if arguments[0] == "cosign" and Path(arguments[-1]).read_bytes() != (output / "checksums.txt").read_bytes():
+                return "verified"
             if arguments[0] == "cosign":
                 self.assertEqual("verify-blob", arguments[1])
                 self.assertEqual(uploaded, Path(arguments[3]).read_bytes())
@@ -301,12 +333,21 @@ class PublicationTests(Workspace):
             self.assertEqual(".github/workflows/release.yml", call.args[2])
 
     def test_publish_with_build_signed_signer_workflow(self):
+        """Reverify all four identical published bundles without making any release writes."""
         release, output = self.plugin()
         write_bundles(output)
         client = FakeGitHub()
         client.add(FIRST, release, output)
         runner = Mock()
+        cosign = Mock()
         verifier = Mock()
+
+        def dispatch(arguments, *, timeout=None):
+            """Record cosign verification separately from the immutable release's forbidden writes."""
+            if arguments[0] == "cosign":
+                return cosign(arguments, timeout=timeout)
+            return runner(arguments)
+
         with patch("jellysin_tooling.release.exact_tag", return_value=COMMIT):
             self.assertEqual(
                 release,
@@ -317,11 +358,12 @@ class PublicationTests(Workspace):
                     release["tag"],
                     ".github/workflows/release.yml",
                     verifier,
-                    runner,
+                    dispatch,
                     signer_workflow=".github/workflows/build-signed.yml",
                 ),
             )
         runner.assert_not_called()
+        self.assertEqual(8, cosign.call_count)
         self.assertEqual(4, verifier.call_count)
         for call in verifier.call_args_list:
             self.assertEqual(".github/workflows/build-signed.yml", call.args[2])
@@ -419,12 +461,18 @@ class PublicationTests(Workspace):
         runner.assert_not_called()
 
     def test_published_incomplete_release_is_never_repaired_by_mutation(self):
+        """A published release missing an asset must stop without invoking a write runner."""
         release, output = self.plugin()
         client = FakeGitHub()
         remote = client.add(FIRST, release, output)
         remote["assets"].pop()
         with self.assertRaisesRegex(ValidationError, "do not mutate"):
-            reconcile_assets(client, remote, local_artifacts(output, release), FIRST["repository"], release["tag"])
+            reconcile_assets(
+                client,
+                remote,
+                local_artifacts(output, release),
+                _ReleaseContext(FIRST["repository"], release["tag"], remote["id"]),
+            )
 
     def test_wrong_event_ref_or_commit_blocks_publication(self):
         release, output = self.plugin()
@@ -449,6 +497,7 @@ class PublicationTests(Workspace):
             publish(Mock(), output, FIRST["repository"], release["tag"], ".github/workflows/release.yml")
 
     def test_changed_checksum_file_missing_file_and_extra_remote_asset_fail(self):
+        """Unexpected remote assets and corrupted local artifacts remain conflicts before publication."""
         release, output = self.plugin()
         client = FakeGitHub()
         remote = client.add(FIRST, release, output)
@@ -457,7 +506,12 @@ class PublicationTests(Workspace):
         extra["browser_download_url"] = extra["browser_download_url"].rsplit("/", 1)[0] + "/extra.txt"
         remote["assets"].append(extra)
         with self.assertRaisesRegex(ValidationError, "Unexpected"):
-            reconcile_assets(client, remote, local_artifacts(output, release), FIRST["repository"], release["tag"])
+            reconcile_assets(
+                client,
+                remote,
+                local_artifacts(output, release),
+                _ReleaseContext(FIRST["repository"], release["tag"], remote["id"]),
+            )
         (output / "checksums.txt").write_bytes(b"forged")
         with self.assertRaisesRegex(ValidationError, "checksum"):
             local_artifacts(output, release)
