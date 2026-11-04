@@ -1,6 +1,7 @@
 """Execute real Makefile recipes with a recording interpreter under a spaced path."""
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -32,6 +33,10 @@ class MakefileSpacedVenvTests(unittest.TestCase):
 
     def write_python_stub(self):
         """Install the dependency-free argument recorder at the fixture interpreter path."""
+        temporary = tempfile.TemporaryDirectory(prefix="make-e2e-bin-")
+        self.addCleanup(temporary.cleanup)
+        self.host_bin = Path(temporary.name)
+        (self.host_bin / "python3").symlink_to(sys.executable)
         self.python.write_text(
             "#!/usr/bin/env python3\n"
             '"""Record the executable path and each argument without running repository tools."""\n'
@@ -51,7 +56,10 @@ class MakefileSpacedVenvTests(unittest.TestCase):
             "test",
             f"DEV_VENV={self.venv}",
             cwd=self.root,
-            env=make_fixtures.clean_env(STUB_LOG=str(self.log)),
+            env=make_fixtures.clean_env(
+                PATH=f"{self.host_bin}{os.pathsep}{os.environ.get('PATH', os.defpath)}",
+                STUB_LOG=str(self.log),
+            ),
         )
 
     def test_policy_and_test_recipes_use_spaced_venv(self):
@@ -75,6 +83,18 @@ class MakefileSpacedVenvTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn(f"{self.venv} does not match requirements-dev.txt", result.stderr)
         self.assertFalse(self.log.exists())
+
+    def test_recipes_without_python3_on_host_path(self):
+        """Reach the recorder with only cmp available on the inherited PATH."""
+        host_bin = self.root / "host-bin"
+        host_bin.mkdir()
+        cmp = shutil.which("cmp")
+        self.assertIsNotNone(cmp)
+        (host_bin / "cmp").symlink_to(cmp)
+        with patch.dict("os.environ", PATH=str(host_bin)):
+            self.assertIsNone(shutil.which("python3"))
+            result = self.run_recipes()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_recording_stub_with_spaced_host_interpreter(self):
         """Reach the recorder even when the test interpreter itself has a spaced path."""

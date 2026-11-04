@@ -32,7 +32,8 @@ class SourcePackageFixture(Workspace):
         require(isinstance(self.tag, str) and self.tag.startswith("v"), "Release tag must start with v")
         semver(self.tag[1:])
         require(self.tag == "v1.0.0", "Unexpected test tag")
-        return subprocess.run(  # nosec B603: fixed CLI, validated fixture inputs, argument list without a shell.
+        # Fixed CLI, inputs validated against a fixed allow-list above, argument list without a shell.
+        return subprocess.run(  # nosec B603  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
             [
                 sys.executable,
                 str(TOOL),
