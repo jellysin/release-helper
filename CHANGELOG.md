@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.1](https://github.com/jellysin/release-helper/compare/v1.6.0...v1.6.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **check:** skip the tag comparison in repositories that never tag ([#96](https://github.com/jellysin/release-helper/issues/96)) ([bdb5a32](https://github.com/jellysin/release-helper/commit/bdb5a3240952b55b295d68ac131cf727086b552a))
+* **ci:** wait for this commit's release before failing its tag ([#97](https://github.com/jellysin/release-helper/issues/97)) ([1c165df](https://github.com/jellysin/release-helper/commit/1c165df856a84bb8c0bf2d1d549ae7f6ca49fa30))
+* quote DEV_VENV in the Makefile recipes ([#122](https://github.com/jellysin/release-helper/issues/122)) ([b5c288a](https://github.com/jellysin/release-helper/commit/b5c288a7cda52ba36c81e61e46866d707d174f94))
+* **release:** name the request and HTTP status of a refused label call ([#93](https://github.com/jellysin/release-helper/issues/93)) ([3a911ec](https://github.com/jellysin/release-helper/commit/3a911ec22dcf0ad6a53e5866b7143a207c30abb9))
+* **source:** accept a repository name that starts with a dot ([#123](https://github.com/jellysin/release-helper/issues/123)) ([1891623](https://github.com/jellysin/release-helper/commit/1891623ffd2f5f8d7030520c6e67d87295c2e145))
+
 ## [1.6.0](https://github.com/jellysin/release-helper/compare/v1.5.0...v1.6.0) (2026-10-19)
 
 
