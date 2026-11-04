@@ -26,6 +26,15 @@ class ReleaseWorkflowShapeTests(unittest.TestCase):
         self.release_data = yaml.safe_load(self.release_text)
         self.build_data = yaml.safe_load(self.build_text)
 
+    def test_governance_checkout_has_full_history_for_release_evidence(self):
+        """Require full history for the engine's release end-to-end evidence check."""
+        workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+        steps = workflow["jobs"]["governance"]["steps"]
+        checkouts = [step for step in steps if step.get("uses", "").startswith("actions/checkout@")]
+        self.assertEqual(len(checkouts), 1)
+        self.assertEqual(checkouts[0]["with"].get("fetch-depth"), 0)
+        self.assertIs(checkouts[0]["with"]["persist-credentials"], False)
+
     def test_release_workflow_has_only_workflow_dispatch_trigger(self):
         triggers = self.release_data.get("on") or self.release_data.get(True)
         self.assertEqual(list(triggers.keys()), ["workflow_dispatch"])
