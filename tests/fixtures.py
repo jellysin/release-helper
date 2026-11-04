@@ -106,6 +106,8 @@ class Workspace(unittest.TestCase):
         environment = patch.dict(os.environ, {"GITHUB_ACTIONS": "false", "GITHUB_OUTPUT": ""})
         environment.start()
         self.addCleanup(environment.stop)
+        for key in GIT_LOCATION_VARIABLES:
+            os.environ.pop(key, None)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)

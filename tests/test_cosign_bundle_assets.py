@@ -1,13 +1,15 @@
 """Tests for cosign bundle asset verification, reconciliation, and publication."""
 
 import base64
-import subprocess
+import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from jellysin_tooling import source
 from jellysin_tooling.common import MAX_BUNDLE, MAX_FILES, ValidationError
+from jellysin_tooling.github import command
 from jellysin_tooling.release import publish, validate_bundle
 from tests.fixtures import (
     COMMIT,
@@ -15,7 +17,6 @@ from tests.fixtures import (
     FIRST,
     FakeGitHub,
     Workspace,
-    clean_git_env,
     make_bundle,
     write_bundles,
 )
@@ -34,7 +35,7 @@ class CosignBundlePublicationTests(Workspace):
 
         def git(*arguments):
             """Apply fixture-only options without changing inherited credential configuration."""
-            result = subprocess.run(
+            return command(
                 [
                     "git",
                     "-c",
@@ -45,13 +46,8 @@ class CosignBundlePublicationTests(Workspace):
                     f"core.hooksPath={repo_dir / 'unused-hooks'}",
                     *arguments,
                 ],
-                cwd=str(repo_dir),
-                env=clean_git_env(),
-                capture_output=True,
-                check=True,
-                timeout=30,
+                cwd=repo_dir,
             )
-            return result.stdout.decode("utf-8").strip()
 
         git("init")
         git("config", "user.name", "Test User")
@@ -663,6 +659,45 @@ class CosignBundlePublicationTests(Workspace):
                 kind="source",
                 signer_workflow=BUILD_SIGNED_WORKFLOW,
             )
+
+    def test_cosign_publication_source_build_succeeds_with_external_git_dir(self):
+        """A publication test calling source.build must succeed even if GIT_DIR is set before fixture setup."""
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        with patch.dict(os.environ, {"GIT_DIR": outside.name}):
+            self.setUp()
+            _, commit, tag, repo, output, release, files = self.setup_source_release()
+        write_bundles(output, files)
+        client = FakeGitHub()
+        remote = client.add({"repository": repo}, release, output, draft=True)
+        remote["assets"].clear()
+        writes = []
+        runner = self.make_runner(client, remote, output, writes)
+        verifier = Mock()
+
+        with (
+            patch("jellysin_tooling.release.exact_tag", return_value=commit),
+            patch("jellysin_tooling.release.remote_tag", return_value=commit),
+            patch(
+                "jellysin_tooling.source.archive_bytes",
+                return_value=(output / release["archive"]["name"]).read_bytes(),
+            ),
+        ):
+            result = publish(
+                client,
+                output,
+                repo,
+                tag,
+                RELEASE_WORKFLOW,
+                verifier,
+                runner,
+                kind="source",
+                signer_workflow=BUILD_SIGNED_WORKFLOW,
+            )
+
+        self.assertEqual(release, result)
+        self.assertFalse(remote["draft"])
+        self.assertTrue(remote["immutable"])
 
 
 class PublishedBundleReplayTests(unittest.TestCase):
