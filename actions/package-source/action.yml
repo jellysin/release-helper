@@ -8,11 +8,16 @@ inputs:
     description: Release artifact directory.
     default: dist
   repo:
-    description: Repository name (owner/repo); defaults to GITHUB_REPOSITORY when empty.
+    description: >-
+      Repository name (owner/repo); repo may start with one dot followed by an
+      alphanumeric; defaults to GITHUB_REPOSITORY when empty.
     default: ''
 outputs:
   archive:
-    description: Absolute path to the source tarball.
+    description: >-
+      Absolute path to <name>-<version>.tar.gz, where <name> is the repository name
+      without the owner and without a single leading dot
+      (jellysin/.github -> github-<version>.tar.gz).
     value: ${{ steps.package.outputs.archive }}
   directory:
     description: Absolute release artifact directory.

@@ -20,7 +20,10 @@ MAX_BODY = 65536
 TOOL_NAME = "jellysin-release-helper"
 # The one place that names the supported Jellyfin major; both ABI validators read it.
 JELLYFIN_ABI_MAJOR = 12
-REPOSITORY = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}")
+REPOSITORY = re.compile(
+    r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}/"
+    r"(?:[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}|\.[a-zA-Z0-9][a-zA-Z0-9_.-]{0,98})(?<!\.)"
+)
 SHA = re.compile(r"[0-9a-f]{40}")
 SEMVER = re.compile(r"(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})")
 HOST_PREFIXES = ("system.", "microsoft.", "jellyfin.", "emby.", "mediabrowser.")
@@ -48,6 +51,11 @@ def text(value, name, limit=4096):
 def repository(value):
     require(isinstance(value, str) and REPOSITORY.fullmatch(value), "Invalid repository")
     return value
+
+
+def source_archive_stem(value):
+    """Return a filename-safe repository name with its single leading dot removed."""
+    return filename(repository(value).split("/")[1].removeprefix("."))
 
 
 def semver(value):
