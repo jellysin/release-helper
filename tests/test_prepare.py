@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import tempfile
 from functools import partial
 from pathlib import Path
 from unittest.mock import patch
@@ -13,7 +14,7 @@ from jellysin_tooling import prepare
 from jellysin_tooling.cli import parser, run
 from jellysin_tooling.common import MAX_BODY, ValidationError
 from jellysin_tooling.github import command
-from tests.fixtures import COMMIT, FIRST, Workspace
+from tests.fixtures import COMMIT, FIRST, Workspace, clean_git_env
 
 REPO = FIRST["repository"]
 TAG = "v1.2.3"
@@ -540,6 +541,7 @@ class GitHistoryTests(Workspace):
                 *arguments,
             ],
             cwd=self.root,
+            env=clean_git_env(),
             capture_output=True,
             check=True,
             timeout=30,
@@ -572,6 +574,18 @@ class GitHistoryTests(Workspace):
             with self.subTest(path=path, tag=tag), self.assertRaisesRegex(ValidationError, "git command failed"):
                 prepare.prepare(remote, REPO, tag, commit, path, runner=remote.run)
             self.assertEqual((0, []), (remote.reads, remote.writes))
+
+    def test_git_commands_leave_external_git_index_file_untouched(self):
+        """Repository-location variables must be stripped so fixture git never mutates an external index."""
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        outside_index = Path(outside.name) / "outside.index"
+        self.assertFalse(outside_index.exists())
+        with patch.dict(os.environ, {"GIT_INDEX_FILE": str(outside_index)}):
+            (self.root / "probe.txt").write_text("probe\n", encoding="utf-8")
+            self.commit("probe commit")
+        self.assertFalse(outside_index.exists())
+        self.assertEqual("probe", self.git("show", "HEAD:probe.txt"))
 
 
 class InterfaceTests(Workspace):

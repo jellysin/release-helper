@@ -1,15 +1,24 @@
 """Tests for cosign bundle asset verification, reconciliation, and publication."""
 
 import base64
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from jellysin_tooling import source
 from jellysin_tooling.common import MAX_BUNDLE, MAX_FILES, ValidationError
-from jellysin_tooling.github import command
 from jellysin_tooling.release import publish, validate_bundle
-from tests.fixtures import COMMIT, CREATED, FIRST, FakeGitHub, Workspace, make_bundle, write_bundles
+from tests.fixtures import (
+    COMMIT,
+    CREATED,
+    FIRST,
+    FakeGitHub,
+    Workspace,
+    clean_git_env,
+    make_bundle,
+    write_bundles,
+)
 
 BUILD_SIGNED_WORKFLOW = ".github/workflows/build-signed.yml"
 RELEASE_WORKFLOW = ".github/workflows/release.yml"
@@ -25,7 +34,7 @@ class CosignBundlePublicationTests(Workspace):
 
         def git(*arguments):
             """Apply fixture-only options without changing inherited credential configuration."""
-            return command(
+            result = subprocess.run(
                 [
                     "git",
                     "-c",
@@ -37,7 +46,12 @@ class CosignBundlePublicationTests(Workspace):
                     *arguments,
                 ],
                 cwd=str(repo_dir),
+                env=clean_git_env(),
+                capture_output=True,
+                check=True,
+                timeout=30,
             )
+            return result.stdout.decode("utf-8").strip()
 
         git("init")
         git("config", "user.name", "Test User")
