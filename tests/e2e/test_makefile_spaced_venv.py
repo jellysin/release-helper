@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tests import test_makefile as make_fixtures
 
@@ -25,8 +26,14 @@ class MakefileSpacedVenvTests(unittest.TestCase):
         self.venv = self.root / "dev environment" / ".venv"
         self.python = self.venv / "bin" / "python"
         self.python.parent.mkdir(parents=True)
+        self.write_python_stub()
+        shutil.copyfile(requirements, self.venv / "requirements-dev.txt")
+        self.log = self.root / "python-arguments.jsonl"
+
+    def write_python_stub(self):
+        """Install the dependency-free argument recorder at the fixture interpreter path."""
         self.python.write_text(
-            f"#!{sys.executable}\n"
+            "#!/usr/bin/env python3\n"
             '"""Record the executable path and each argument without running repository tools."""\n'
             "import json\n"
             "import os\n"
@@ -36,8 +43,6 @@ class MakefileSpacedVenvTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.python.chmod(0o755)
-        shutil.copyfile(requirements, self.venv / "requirements-dev.txt")
-        self.log = self.root / "python-arguments.jsonl"
 
     def run_recipes(self):
         """Reuse the bounded make runner while preserving inherited git configuration."""
@@ -70,3 +75,15 @@ class MakefileSpacedVenvTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn(f"{self.venv} does not match requirements-dev.txt", result.stderr)
         self.assertFalse(self.log.exists())
+
+    def test_recording_stub_with_spaced_host_interpreter(self):
+        """Reach the recorder even when the test interpreter itself has a spaced path."""
+        interpreter = self.root / "host environment" / "python"
+        interpreter.parent.mkdir()
+        interpreter.symlink_to(sys.executable)
+        with patch("sys.executable", str(interpreter)):
+            self.write_python_stub()
+        result = self.run_recipes()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in self.log.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([str(self.python)] * 3, [call[0] for call in calls])
