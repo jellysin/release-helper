@@ -54,8 +54,8 @@ def repository(value):
 
 
 def source_archive_stem(value):
-    """Return a validated repository name with its single leading dot removed."""
-    return repository(value).split("/")[1].removeprefix(".")
+    """Return a filename-safe repository name with its single leading dot removed."""
+    return filename(repository(value).split("/")[1].removeprefix("."))
 
 
 def semver(value):

@@ -94,6 +94,8 @@ class SourceReleaseTests(Workspace):
         for value in (
             "jellysin/.github",
             "jellysin/.a",
+            "jellysin/.a..b",
+            "jellysin/a..b",
             "jellysin/repo",
             "a/b",
             "owner./repo",
@@ -125,16 +127,77 @@ class SourceReleaseTests(Workspace):
 
     def test_source_archive_stem_preserves_plain_names_and_validates_dot_names(self):
         """Strip exactly one validated leading dot and retain ordinary names."""
-        for name, expected in ((".github", "github"), ("repo", "repo"), (".a", "a"), (".a.b", "a.b")):
+        for name, expected in (
+            (".github", "github"),
+            ("repo", "repo"),
+            (".a", "a"),
+            (".a.b", "a.b"),
+            ("a.b", "a.b"),
+        ):
             with self.subTest(name=name):
                 self.assertEqual(expected, common.source_archive_stem(f"jellysin/{name}"))
         for value in ("jellysin/..github", "jellysin/.", "jellysin/.github.", "jellysin/." + "a" * 100):
             with self.subTest(refused=value), self.assertRaisesRegex(ValidationError, "Invalid repository"):
                 common.source_archive_stem(value)
 
+    def test_source_archive_stem_refuses_filename_unsafe_repository_names(self):
+        """Reject unsafe archive stems while retaining valid repository identities."""
+        for repo in ("jellysin/.a..b", "jellysin/a..b"):
+            with self.subTest(repo=repo):
+                self.assertEqual(repo, common.repository(repo))
+                with self.assertRaisesRegex(ValidationError, "^Unsafe filename$"):
+                    common.source_archive_stem(repo)
+
+    def test_source_build_refuses_unsafe_stems_before_archive_or_writes(self):
+        """Reject double-dot stems before generating an archive or writing artifacts."""
+        tar_data = gzip.decompress(make_tar_gz({"README.md": b"source"}, prefix="a..b-1.0.0"))
+        for name in (".a..b", "a..b"):
+            output = self.root / name
+            with (
+                self.subTest(name=name),
+                patch("jellysin_tooling.source.command_bytes", return_value=tar_data) as archive,
+                patch("jellysin_tooling.source.atomic_write") as write,
+            ):
+                with self.assertRaisesRegex(ValidationError, "^Unsafe filename$"):
+                    source.build(f"jellysin/{name}", "v1.0.0", COMMIT, CREATED, output)
+                archive.assert_not_called()
+                write.assert_not_called()
+                self.assertFalse(output.exists())
+
+    def test_source_validators_refuse_unsafe_stems_with_filename_error(self):
+        """Reject double-dot repository stems consistently in release and local validation."""
+        data = b"archive"
+        archive_name = "a.b-1.0.0.tar.gz"
+        for repo in ("jellysin/.a..b", "jellysin/a..b"):
+            release = {
+                "schemaVersion": 1,
+                "kind": "source",
+                "repository": repo,
+                "semver": "1.0.0",
+                "tag": "v1.0.0",
+                "commit": COMMIT,
+                "timestamp": CREATED,
+                "archive": {
+                    "name": archive_name,
+                    "size": len(data),
+                    "sha256": digest(data),
+                    "url": f"https://github.com/{repo}/releases/download/v1.0.0/{archive_name}",
+                },
+            }
+            with self.subTest(repo=repo, validator="release"):
+                with self.assertRaisesRegex(ValidationError, "^Unsafe filename$"):
+                    source.validate_release(release, repo, "v1.0.0")
+            with (
+                self.subTest(repo=repo, validator="local"),
+                patch("jellysin_tooling.source.archive_bytes", return_value=data) as archive,
+            ):
+                with self.assertRaisesRegex(ValidationError, "^Unsafe filename$"):
+                    source.validate_local({archive_name: data}, release)
+                archive.assert_not_called()
+
     def test_dot_repository_source_build_and_local_validation_preserve_identity(self):
         """Build and regenerate safe archives without changing repository or SPDX identity."""
-        for name, stem in ((".github", "github"), ("repo", "repo")):
+        for name, stem in ((".github", "github"), ("repo", "repo"), ("a.b", "a.b"), (".a.b", "a.b")):
             prefix = f"{stem}-1.0.0"
             tar_data = gzip.decompress(make_tar_gz({"README.md": b"# Source Repo\n"}, prefix=prefix))
             with (
@@ -142,7 +205,7 @@ class SourceReleaseTests(Workspace):
                 patch("jellysin_tooling.source.command_bytes", return_value=tar_data) as archive,
             ):
                 repo = f"jellysin/{name}"
-                output = self.root / stem
+                output = self.root / name
                 release = source.build(repo, "v1.0.0", COMMIT, CREATED, output)
                 self.assertEqual(f"{prefix}.tar.gz", release["archive"]["name"])
                 self.assertEqual(repo, release["repository"])
@@ -165,7 +228,7 @@ class SourceReleaseTests(Workspace):
 
     def test_dot_repository_release_metadata_requires_safe_archive_name(self):
         """Accept canonical stems and refuse a planted leading-dot archive name."""
-        for name, stem in ((".github", "github"), ("repo", "repo")):
+        for name, stem in ((".github", "github"), ("repo", "repo"), ("a.b", "a.b"), (".a.b", "a.b")):
             repo = f"jellysin/{name}"
             archive_name = f"{stem}-1.0.0.tar.gz"
             url = f"https://github.com/{repo}/releases/download/v1.0.0/"

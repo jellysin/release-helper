@@ -14,7 +14,10 @@ inputs:
     default: ''
 outputs:
   archive:
-    description: Absolute path to <repo>-<version>.tar.gz; a single leading repository dot is omitted.
+    description: >-
+      Absolute path to <name>-<version>.tar.gz, where <name> is the repository name
+      without the owner and without a single leading dot
+      (jellysin/.github -> github-<version>.tar.gz).
     value: ${{ steps.package.outputs.archive }}
   directory:
     description: Absolute release artifact directory.
