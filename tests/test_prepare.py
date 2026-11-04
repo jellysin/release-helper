@@ -28,6 +28,17 @@ CHANGELOG = (
 SECTION = "### Features\n\n* prepare drafts"
 
 
+def release_pull(commit=COMMIT, **changes):
+    """Return a merged release-please pull request in this repository."""
+    return {
+        "merged_at": "2026-11-04T12:00:00Z",
+        "merge_commit_sha": commit,
+        "head": {"ref": "release-please--branches--main"},
+        "labels": [{"name": "autorelease: pending"}],
+        **changes,
+    }
+
+
 def release(identity=1, tag=TAG, **changes):
     remote = {
         "id": identity,
@@ -44,6 +55,7 @@ class Remote:
     """GitHub state shared by the read client and the write runner."""
 
     def __init__(self, tags=None, releases=()):
+        """Initialize bounded API answers and record reads separately from writes."""
         self.token = "synthetic-fixture-token"
         self.tags = dict(tags or {})
         self.releases = list(releases)
@@ -55,12 +67,18 @@ class Remote:
         self.lost = set()
         self.lagging = False
         self.answer = {}
+        self.pulls = {COMMIT: [release_pull()]}
+        self.paths = []
 
     def api(self, path):
+        """Serve only expected repository reads, including commit-associated pull requests."""
         self.reads += 1
+        self.paths.append(path)
         prefix = f"repos/{REPO}/"
         assert path.startswith(prefix), path
         kind, _, name = path[len(prefix) :].rpartition("/")
+        if kind.startswith("commits/") and name == "pulls?per_page=100&page=1":
+            return self.pulls.get(kind.removeprefix("commits/"), [])
         if kind == "git/matching-refs/tags":
             if self.listing is not None:
                 return self.listing
@@ -315,6 +333,79 @@ class ConflictTests(PrepareCase):
 
 
 class ApprovalTests(PrepareCase):
+    def test_only_one_merged_labelled_release_pull_authorizes_the_exact_merge_commit(self):
+        """Accept pending or tagged release merges and refuse other PR identities before tag reads."""
+        for label in ("autorelease: pending", "autorelease: tagged"):
+            with self.subTest(label=label):
+                remote = Remote()
+                remote.pulls[COMMIT] = [release_pull(labels=[{"name": label}])]
+                self.assertEqual(release(), self.prepare(remote))
+        refused = (
+            [],
+            [release_pull(merged_at=None)],
+            [release_pull(merged_at=True)],
+            [release_pull(merged_at="")],
+            [release_pull(head={"ref": "feature/new-release"})],
+            [release_pull(labels=[])],
+            [release_pull(labels=[{"name": "release-ready"}])],
+            [release_pull(), release_pull()],
+        )
+        for pulls in refused:
+            with self.subTest(pulls=pulls):
+                remote = Remote()
+                remote.pulls[COMMIT] = pulls
+                self.refused(remote, "Commit is not the merge commit of a merged release pull request")
+                self.assertEqual([f"repos/{REPO}/commits/{COMMIT}/pulls?per_page=100&page=1"], remote.paths)
+
+    def test_pull_request_answers_fail_closed_when_unreadable_malformed_or_full(self):
+        """Refuse an ambiguous page or malformed JSON shape without reading tags or writing."""
+        answers = (
+            {},
+            None,
+            [None],
+            [release_pull(head=None)],
+            [release_pull(head={"ref": 1})],
+            [release_pull(labels=None)],
+            [release_pull(labels=[None])],
+            [release_pull(labels=[{"name": 1}])],
+            [release_pull(labels=[{"name": "other"}] * 101)],
+            [release_pull()] * 100,
+            [release_pull()] * 101,
+        )
+        for answer in answers:
+            with self.subTest(answer=str(answer)[:80]):
+                remote = Remote()
+                remote.pulls[COMMIT] = answer
+                self.refused(remote, "Commit is not the merge commit of a merged release pull request")
+                self.assertEqual(1, remote.reads)
+        remote = Remote()
+        with patch.object(remote, "api", side_effect=ValidationError("synthetic unreadable response")):
+            self.refused(remote, "cannot read commit pull requests")
+
+    def test_a_short_pull_page_with_one_matching_release_merge_is_accepted(self):
+        """A bounded page may contain unrelated PRs provided exactly one authorizes this merge."""
+        remote = Remote()
+        remote.pulls[COMMIT] = [release_pull(merged_at=None)] * 98 + [release_pull()]
+        self.assertEqual(release(), self.prepare(remote))
+
+    def test_later_main_commit_with_the_right_version_is_refused_before_tag_reads(self):
+        """Plant the ancestor-only bug: unchanged version files do not authorize a later commit."""
+        self.git.files[f"{MAIN}:version.txt"] = "1.2.3"
+        self.git.files[f"{MAIN}:CHANGELOG.md"] = CHANGELOG
+        self.git.ancestors.add((MAIN, "refs/remotes/origin/main"))
+        for skip in (False, True):
+            with self.subTest(skip_tagged=skip):
+                remote = Remote({TAG: MAIN} if skip else {})
+                remote.pulls[MAIN] = [release_pull()]
+                self.refused(
+                    remote,
+                    "Commit is not the merge commit of a merged release pull request",
+                    commit=MAIN,
+                    changelog_path="CHANGELOG.md",
+                    skip_tagged=skip,
+                )
+                self.assertEqual([f"repos/{REPO}/commits/{MAIN}/pulls?per_page=100&page=1"], remote.paths)
+
     def unread(self, message, **options):
         remote = Remote()
         self.refused(remote, message, **options)
@@ -452,8 +543,10 @@ class GitHistoryTests(Workspace):
         return self.git("rev-parse", "HEAD")
 
     def test_version_and_changelog_come_from_the_approved_commit_not_the_checkout(self):
+        """Authorize the real history fixture's merge SHA and read its recorded version and notes."""
         self.assertEqual("1.2.4", (self.root / "version.txt").read_text(encoding="utf-8").strip())
         remote = Remote()
+        remote.pulls[self.approved] = [release_pull(self.approved)]
         prepare.prepare(remote, REPO, TAG, self.approved, "version.txt", "CHANGELOG.md", runner=remote.run)
         self.assertEqual({TAG: self.approved}, remote.tags)
         self.assertEqual(SECTION, remote.payloads[0]["body"])

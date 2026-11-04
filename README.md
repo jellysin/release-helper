@@ -137,6 +137,12 @@ hold the cosign bundle `<asset>.sigstore.json` of each artifact; the publisher c
 that each bundle names its artifact's SHA-256 and uploads it next to the artifact, so a
 release carries eight assets. Anyone can then verify an asset with
 `cosign verify-blob --bundle <asset>.sigstore.json --certificate-identity https://github.com/<repo>/.github/workflows/build-signed.yml@refs/tags/<tag> --certificate-oidc-issuer https://token.actions.githubusercontent.com <asset>`.
+After a partial publication, a fresh Release run on the same tag keeps bundles already
+uploaded once their structure, artifact digest and cosign workflow identity verify.
+The signed artifact must match the uploaded artifact byte for byte, or still await
+upload; every other differing asset remains a conflict requiring a new version.
+The retry implementation is in [`jellysin_tooling/release.py`](jellysin_tooling/release.py)
+and its recovery and refusal cases are in [`tests/test_release.py`](tests/test_release.py).
 Releases up to v1.4.2 carry no bundles. An existing draft and the exact tag are prerequisites;
 release PR preparation creates neither, `actions/prepare` creates both. GitHub currently requires maintainer approval of
 `GITHUB_TOKEN`-created PR workflows, including later updates; dispatching CI does
@@ -180,7 +186,13 @@ unpublished draft. It never publishes, and it never moves, edits or deletes anyt
 python tools.py prepare --repo jellysin/plugin-lastfm --tag v1.0.0 --commit <full SHA>
 ```
 
-The commit must be an ancestor of fetched `origin/main`. Its version file
+The commit must be an ancestor of fetched `origin/main` and the merge commit of
+exactly one merged release PR in the repository. The PR must have a head ref starting
+with `release-please--` and carry `autorelease: pending` or `autorelease: tagged`.
+This check precedes tag reads and writes, including with `--skip-tagged`;
+[`jellysin_tooling/prepare.py`](jellysin_tooling/prepare.py) implements it and
+[`tests/test_prepare.py`](tests/test_prepare.py) covers refusal of later main commits.
+Its version file
 (`--version-path`, default `version.txt`) is read from the commit itself, not from
 the checkout, and must record the version in the tag. `--changelog-path CHANGELOG.md`
 takes the draft text from that version's section of the changelog at the same commit:

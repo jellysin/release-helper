@@ -2,10 +2,11 @@
 
 import copy
 import os
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from jellysin_tooling.catalog import collect
-from jellysin_tooling.common import ValidationError
+from jellysin_tooling.common import MAX_BUNDLE, ValidationError
 from jellysin_tooling.release import (
     draft_starters,
     exact_tag,
@@ -14,11 +15,170 @@ from jellysin_tooling.release import (
     reconcile_assets,
     remote_tag,
     remove_draft_starters,
+    validate_bundles,
 )
-from tests.fixtures import COMMIT, FIRST, SECOND, FakeGitHub, Workspace, approved, write_bundles
+from tests.fixtures import COMMIT, FIRST, SECOND, FakeGitHub, Workspace, approved, make_bundle, write_bundles
+
+
+class BundleRetryTests(Workspace):
+    def retry_fixture(self):
+        """Build deterministic artifacts with one differently signed uploaded checksum bundle."""
+        release, output = self.plugin()
+        write_bundles(output)
+        files = local_artifacts(output, release)
+        files.update(validate_bundles(output, files))
+        client = FakeGitHub()
+        remote = client.add(FIRST, release, output, draft=True)
+        bundle = next(asset for asset in remote["assets"] if asset["name"] == "checksums.txt.sigstore.json")
+        return release, output, client, remote, files, bundle
+
+    def replace_bundle(self, client, bundle, data):
+        """Replace synthetic remote bundle bytes and its size without a network call."""
+        bundle["size"] = len(data)
+        client.assets[FIRST["repository"], bundle["id"]] = data
+
+    def test_verified_bundle_is_kept_when_its_artifact_is_not_yet_uploaded(self):
+        """Verify against the local artifact even when its upload was interrupted before starting."""
+        release, _, client, remote, files, bundle = self.retry_fixture()
+        uploaded = make_bundle(files["checksums.txt"], padding="earlier run")
+        self.replace_bundle(client, bundle, uploaded)
+        remote["assets"] = [asset for asset in remote["assets"] if asset["name"] != "checksums.txt"]
+        runner = Mock()
+        self.assertEqual(
+            ["checksums.txt"],
+            reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner),
+        )
+        self.assertEqual(uploaded, files[bundle["name"]])
+        runner.assert_called_once()
+        self.assertIn(
+            f"https://github.com/{FIRST['repository']}/.github/workflows/release.yml@refs/tags/{release['tag']}",
+            runner.call_args.args[0],
+        )
+
+    def test_cosign_failure_or_missing_command_refuses_the_uploaded_bundle(self):
+        """A missing cosign executable or failed cryptographic verification must preserve refusal."""
+        for error in (ValidationError("cosign command failed (1)"), FileNotFoundError("cosign")):
+            with self.subTest(error=error):
+                release, _, client, remote, files, bundle = self.retry_fixture()
+                original = files[bundle["name"]]
+                self.replace_bundle(client, bundle, make_bundle(files["checksums.txt"], padding="earlier run"))
+                runner = Mock(side_effect=error)
+                with self.assertRaisesRegex(ValidationError, "cosign verification unavailable or failed") as caught:
+                    reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+                self.assertIs(error, caught.exception.__cause__)
+                self.assertEqual(original, files[bundle["name"]])
+                runner.assert_called_once()
+
+    def test_bad_remote_bundle_digest_structure_or_size_is_refused_before_cosign(self):
+        """Shared bundle validation rejects wrong digests, malformed structures and oversized downloads."""
+        release, _, client, remote, files, bundle = self.retry_fixture()
+        invalid = (
+            (make_bundle(b"different artifact"), "digest mismatch"),
+            (make_bundle(files["checksums.txt"], media_type="wrong"), "mediaType"),
+            (make_bundle(files["checksums.txt"], algorithm="SHA2_512"), "algorithm"),
+            (b"[]", "JSON object"),
+            (b"{", "JSON"),
+            (b"x" * (MAX_BUNDLE + 1), "size limit"),
+        )
+        for data, message in invalid:
+            with self.subTest(message=message):
+                self.replace_bundle(client, bundle, data)
+                runner = Mock()
+                with self.assertRaisesRegex(ValidationError, message):
+                    reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+                runner.assert_not_called()
+
+    def test_differing_signed_asset_is_refused_before_bundle_verification(self):
+        """A valid bundle cannot authorize replacing an already uploaded artifact with different bytes."""
+        release, _, client, remote, files, bundle = self.retry_fixture()
+        self.replace_bundle(client, bundle, make_bundle(files["checksums.txt"], padding="earlier run"))
+        artifact = next(asset for asset in remote["assets"] if asset["name"] == "checksums.txt")
+        client.assets[FIRST["repository"], artifact["id"]] = b"x" * artifact["size"]
+        runner = Mock()
+        with self.assertRaisesRegex(ValidationError, "Existing asset differs"):
+            reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+        runner.assert_not_called()
+
+    def test_same_size_differing_bundle_is_verified_and_nonbundle_bytes_are_still_refused(self):
+        """Handle nondeterministic bundles of equal length without relaxing artifact byte equality."""
+        release, _, client, remote, files, bundle = self.retry_fixture()
+        # JSON permits both whitespace bytes, giving a structurally valid equal-length bundle.
+        uploaded = files[bundle["name"]].replace(b"\n", b" ")
+        self.assertEqual(len(files[bundle["name"]]), len(uploaded))
+        self.assertNotEqual(files[bundle["name"]], uploaded)
+        self.replace_bundle(client, bundle, uploaded)
+        runner = Mock()
+        self.assertEqual(
+            [], reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+        )
+        runner.assert_called_once()
+        artifact = next(asset for asset in remote["assets"] if asset["name"] == "release.json")
+        client.assets[FIRST["repository"], artifact["id"]] = b"x" * artifact["size"]
+        runner.reset_mock()
+        with self.assertRaisesRegex(ValidationError, "Existing asset differs"):
+            reconcile_assets(client, remote, files, FIRST["repository"], release["tag"], runner=runner)
+        runner.assert_not_called()
 
 
 class PublicationTests(Workspace):
+    def test_fresh_retry_keeps_verified_uploaded_bundle_and_uploads_only_missing_asset(self):
+        """Plant the retry bug: a new keyless bundle must not replace a verified uploaded bundle."""
+        release, output = self.plugin()
+        write_bundles(output)
+        client = FakeGitHub()
+        remote = client.add(FIRST, release, output, draft=True)
+        bundle = next(asset for asset in remote["assets"] if asset["name"] == "checksums.txt.sigstore.json")
+        uploaded = make_bundle((output / "checksums.txt").read_bytes(), padding="earlier signing run")
+        bundle["size"] = len(uploaded)
+        client.assets[FIRST["repository"], bundle["id"]] = uploaded
+        missing = next(asset for asset in remote["assets"] if asset["name"] == "sbom.spdx.json")
+        remote["assets"].remove(missing)
+        writes, verifications = [], []
+
+        def runner(arguments, *, timeout=None):
+            """Verify exact downloaded bytes locally and simulate the draft's remaining writes."""
+            if arguments[0] == "cosign":
+                self.assertEqual("verify-blob", arguments[1])
+                self.assertEqual(uploaded, Path(arguments[3]).read_bytes())
+                self.assertEqual((output / "checksums.txt").read_bytes(), Path(arguments[-1]).read_bytes())
+                self.assertEqual(
+                    [
+                        "--certificate-identity",
+                        f"https://github.com/{FIRST['repository']}/.github/workflows/build-signed.yml@refs/tags/{release['tag']}",
+                        "--certificate-oidc-issuer",
+                        "https://token.actions.githubusercontent.com",
+                    ],
+                    arguments[4:-1],
+                )
+                self.assertEqual(120, timeout)
+                verifications.append(arguments)
+                return "verified"
+            writes.append(arguments)
+            if "POST" in arguments:
+                remote["assets"].append(missing)
+            elif "PATCH" in arguments:
+                client.publish(remote)
+
+        with patch("jellysin_tooling.release.exact_tag", return_value=COMMIT):
+            self.assertEqual(
+                release,
+                publish(
+                    client,
+                    output,
+                    FIRST["repository"],
+                    release["tag"],
+                    ".github/workflows/release.yml",
+                    Mock(),
+                    runner,
+                    signer_workflow=".github/workflows/build-signed.yml",
+                ),
+            )
+        self.assertTrue(verifications)
+        self.assertEqual(["POST", "PATCH"], [arguments[3] for arguments in writes])
+        self.assertIn(str(output / missing["name"]), writes[0])
+        self.assertEqual(uploaded, client.assets[FIRST["repository"], bundle["id"]])
+        self.assertNotEqual(uploaded, (output / bundle["name"]).read_bytes())
+
     def test_second_plugin_draft_publication_retry_and_catalog_keep_its_own_identity(self):
         first, first_output = self.plugin()
         second, output = self.plugin(SECOND, "2.3.4", b"MZindependent cinema fixture")
