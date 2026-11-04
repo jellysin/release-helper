@@ -90,7 +90,10 @@ Preparation is the step between: `prepare`, dispatched manually from
 `prepare-release.yml` on `main`, creates the exact tag on an approved main commit and
 one unpublished draft. It checks tag, commit, version file and remote state before the
 first write, creates only what is missing, and leaves an existing draft untouched. It
-takes the created draft from the answer of its own write, since the release listing can
+requires job-scoped `contents: write` and `pull-requests: read` permissions to create
+the tag and draft and check the commit's merged release PR. Dispatching `release.yml`
+also requires job-scoped `actions: write`. Preparation takes the created draft from
+the answer of its own write, since the release listing can
 lag behind a creation by seconds. A
 published or immutable release with the tag, or the tag on another commit, is a
 conflict that needs a new version. Every write of the command has a test that proves
@@ -116,7 +119,13 @@ the exact tag ref** with an existing draft. Checking out a tag from a main-trigg
 workflow does not change the OIDC source identity. Publication validates the exact
 tag commit, attests every artifact, verifies existing bytes, uploads missing draft
 assets, rechecks the complete draft, then publishes. Retry on the same tag. A
-mismatch needs a new version; an incomplete published release is never repaired.
+fresh Release run after partial publication keeps already uploaded signature bundles
+once their structure, artifact digest and cosign verification against the exact signer
+workflow and tag pass. Their signed artifacts must be byte-identical to uploaded
+artifacts or still await upload. Other mismatches need a new version; an incomplete
+published release is never repaired. See
+[`release.reconcile_assets`](jellysin_tooling/release.py) and the retry cases in
+[`tests/test_release.py`](tests/test_release.py).
 Only expected zero-byte `starter` assets in a freshly revalidated draft may be
 deleted during failed-upload recovery. A changed or uploaded asset stops recovery.
 

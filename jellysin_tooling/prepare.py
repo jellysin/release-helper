@@ -5,13 +5,25 @@ import tempfile
 from pathlib import Path
 
 from . import changelog
-from .common import MAX_BODY, SHA, decode_json, filename, json_bytes, release_notes, repository, require, semver
+from .common import (
+    MAX_BODY,
+    SHA,
+    ValidationError,
+    decode_json,
+    filename,
+    json_bytes,
+    release_notes,
+    repository,
+    require,
+    semver,
+)
 from .github import command
 from .release import matching_releases, release_identity, remote_tag
 
 WORKFLOW = ".github/workflows/prepare-release.yml"
 # The listing documents no page size; a full default page may hide the exact tag behind longer names.
 TAG_PAGE = 30
+PULL_PAGE = 100
 
 
 def tracked(commit, path):
@@ -53,6 +65,35 @@ def release_body(commit, changelog_path, version):
     return release_notes("\n".join(lines), MAX_BODY)
 
 
+def approved_release_pull(client, repo, commit):
+    """Require exactly one merged, labelled release PR whose merge commit is the proposed tag target."""
+    error = "Commit is not the merge commit of a merged release pull request"
+    try:
+        pulls = client.api(f"repos/{repo}/commits/{commit}/pulls?per_page={PULL_PAGE}&page=1")
+    except ValidationError as exc:
+        raise ValidationError(f"{error}: cannot read commit pull requests") from exc
+    require(isinstance(pulls, list) and len(pulls) < PULL_PAGE, f"{error}: invalid or oversized pull request listing")
+    matches = 0
+    for pull in pulls:
+        require(isinstance(pull, dict), f"{error}: invalid pull request entry")
+        head, labels = pull.get("head"), pull.get("labels")
+        require(isinstance(head, dict) and isinstance(head.get("ref"), str), f"{error}: invalid pull request head")
+        require(isinstance(labels, list) and len(labels) <= PULL_PAGE, f"{error}: invalid pull request labels")
+        require(
+            all(isinstance(label, dict) and isinstance(label.get("name"), str) for label in labels),
+            f"{error}: invalid pull request label",
+        )
+        if (
+            isinstance(pull.get("merged_at"), str)
+            and bool(pull["merged_at"])
+            and pull.get("merge_commit_sha") == commit
+            and head["ref"].startswith("release-please--")
+            and any(label["name"] in ("autorelease: pending", "autorelease: tagged") for label in labels)
+        ):
+            matches += 1
+    require(matches == 1, error)
+
+
 def tagged_commit(client, repo, tag):
     """Return the commit the remote tag names, or None when the listing shows no such tag."""
     refs = client.api(f"repos/{repo}/git/matching-refs/tags/{tag}")
@@ -91,11 +132,12 @@ def create_draft(repo, tag, body, runner):
 def prepare(
     client, repo, tag, commit, version_path="version.txt", changelog_path=None, runner=command, *, skip_tagged=False
 ):
-    """Return the draft; with skip_tagged, return None and write nothing when the tag already names the commit."""
+    """Authorize the release PR merge before remote tag reads; create its draft or skip an existing exact tag."""
     repository(repo)
     version = approved_version(tag, commit, version_path)
     dispatch_context(repo, commit)
     body = release_body(commit, changelog_path, version)
+    approved_release_pull(client, repo, commit)
     if skip_tagged:
         # Another writer (the merge train) made the tag and its release; its release state is not ours to judge.
         existing = tagged_commit(client, repo, tag)

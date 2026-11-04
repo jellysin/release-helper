@@ -3,15 +3,18 @@
 import json
 import os
 import subprocess
+import tempfile
 from functools import partial
 from pathlib import Path
 from unittest.mock import patch
+
+import yaml
 
 from jellysin_tooling import prepare
 from jellysin_tooling.cli import parser, run
 from jellysin_tooling.common import MAX_BODY, ValidationError
 from jellysin_tooling.github import command
-from tests.fixtures import COMMIT, FIRST, Workspace
+from tests.fixtures import COMMIT, FIRST, Workspace, clean_git_env
 
 REPO = FIRST["repository"]
 TAG = "v1.2.3"
@@ -26,6 +29,17 @@ CHANGELOG = (
     "## 1.2.2\n\n* older\n"
 )
 SECTION = "### Features\n\n* prepare drafts"
+
+
+def release_pull(commit=COMMIT, **changes):
+    """Return a merged release-please pull request in this repository."""
+    return {
+        "merged_at": "2026-11-04T12:00:00Z",
+        "merge_commit_sha": commit,
+        "head": {"ref": "release-please--branches--main"},
+        "labels": [{"name": "autorelease: pending"}],
+        **changes,
+    }
 
 
 def release(identity=1, tag=TAG, **changes):
@@ -44,6 +58,7 @@ class Remote:
     """GitHub state shared by the read client and the write runner."""
 
     def __init__(self, tags=None, releases=()):
+        """Initialize bounded API answers and record reads separately from writes."""
         self.token = "synthetic-fixture-token"
         self.tags = dict(tags or {})
         self.releases = list(releases)
@@ -55,12 +70,18 @@ class Remote:
         self.lost = set()
         self.lagging = False
         self.answer = {}
+        self.pulls = {COMMIT: [release_pull()]}
+        self.paths = []
 
     def api(self, path):
+        """Serve only expected repository reads, including commit-associated pull requests."""
         self.reads += 1
+        self.paths.append(path)
         prefix = f"repos/{REPO}/"
         assert path.startswith(prefix), path
         kind, _, name = path[len(prefix) :].rpartition("/")
+        if kind.startswith("commits/") and name == "pulls?per_page=100&page=1":
+            return self.pulls.get(kind.removeprefix("commits/"), [])
         if kind == "git/matching-refs/tags":
             if self.listing is not None:
                 return self.listing
@@ -315,6 +336,79 @@ class ConflictTests(PrepareCase):
 
 
 class ApprovalTests(PrepareCase):
+    def test_only_one_merged_labelled_release_pull_authorizes_the_exact_merge_commit(self):
+        """Accept pending or tagged release merges and refuse other PR identities before tag reads."""
+        for label in ("autorelease: pending", "autorelease: tagged"):
+            with self.subTest(label=label):
+                remote = Remote()
+                remote.pulls[COMMIT] = [release_pull(labels=[{"name": label}])]
+                self.assertEqual(release(), self.prepare(remote))
+        refused = (
+            [],
+            [release_pull(merged_at=None)],
+            [release_pull(merged_at=True)],
+            [release_pull(merged_at="")],
+            [release_pull(head={"ref": "feature/new-release"})],
+            [release_pull(labels=[])],
+            [release_pull(labels=[{"name": "release-ready"}])],
+            [release_pull(), release_pull()],
+        )
+        for pulls in refused:
+            with self.subTest(pulls=pulls):
+                remote = Remote()
+                remote.pulls[COMMIT] = pulls
+                self.refused(remote, "Commit is not the merge commit of a merged release pull request")
+                self.assertEqual([f"repos/{REPO}/commits/{COMMIT}/pulls?per_page=100&page=1"], remote.paths)
+
+    def test_pull_request_answers_fail_closed_when_unreadable_malformed_or_full(self):
+        """Refuse an ambiguous page or malformed JSON shape without reading tags or writing."""
+        answers = (
+            {},
+            None,
+            [None],
+            [release_pull(head=None)],
+            [release_pull(head={"ref": 1})],
+            [release_pull(labels=None)],
+            [release_pull(labels=[None])],
+            [release_pull(labels=[{"name": 1}])],
+            [release_pull(labels=[{"name": "other"}] * 101)],
+            [release_pull()] * 100,
+            [release_pull()] * 101,
+        )
+        for answer in answers:
+            with self.subTest(answer=str(answer)[:80]):
+                remote = Remote()
+                remote.pulls[COMMIT] = answer
+                self.refused(remote, "Commit is not the merge commit of a merged release pull request")
+                self.assertEqual(1, remote.reads)
+        remote = Remote()
+        with patch.object(remote, "api", side_effect=ValidationError("synthetic unreadable response")):
+            self.refused(remote, "cannot read commit pull requests")
+
+    def test_a_short_pull_page_with_one_matching_release_merge_is_accepted(self):
+        """A bounded page may contain unrelated PRs provided exactly one authorizes this merge."""
+        remote = Remote()
+        remote.pulls[COMMIT] = [release_pull(merged_at=None)] * 98 + [release_pull()]
+        self.assertEqual(release(), self.prepare(remote))
+
+    def test_later_main_commit_with_the_right_version_is_refused_before_tag_reads(self):
+        """Plant the ancestor-only bug: unchanged version files do not authorize a later commit."""
+        self.git.files[f"{MAIN}:version.txt"] = "1.2.3"
+        self.git.files[f"{MAIN}:CHANGELOG.md"] = CHANGELOG
+        self.git.ancestors.add((MAIN, "refs/remotes/origin/main"))
+        for skip in (False, True):
+            with self.subTest(skip_tagged=skip):
+                remote = Remote({TAG: MAIN} if skip else {})
+                remote.pulls[MAIN] = [release_pull()]
+                self.refused(
+                    remote,
+                    "Commit is not the merge commit of a merged release pull request",
+                    commit=MAIN,
+                    changelog_path="CHANGELOG.md",
+                    skip_tagged=skip,
+                )
+                self.assertEqual([f"repos/{REPO}/commits/{MAIN}/pulls?per_page=100&page=1"], remote.paths)
+
     def unread(self, message, **options):
         remote = Remote()
         self.refused(remote, message, **options)
@@ -432,17 +526,25 @@ class GitHistoryTests(Workspace):
         self.addCleanup(replaced.stop)
 
     def git(self, *arguments):
-        identity = {"GIT_AUTHOR_NAME": "fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid"}
-        environment = {
-            **identity,
-            "GIT_COMMITTER_NAME": "fixture",
-            "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
-            "GIT_CONFIG_GLOBAL": os.devnull,
-            "GIT_CONFIG_SYSTEM": os.devnull,
-            "PATH": os.environ["PATH"],
-        }
+        """Run fixture git without signing or hooks, preserving inherited credential configuration."""
         result = subprocess.run(
-            ["git", *arguments], cwd=self.root, env=environment, capture_output=True, check=True, timeout=30
+            [
+                "git",
+                "-c",
+                "user.name=fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                f"core.hooksPath={self.root / 'unused-hooks'}",
+                *arguments,
+            ],
+            cwd=self.root,
+            env=clean_git_env(),
+            capture_output=True,
+            check=True,
+            timeout=30,
         )
         return result.stdout.decode().strip()
 
@@ -452,8 +554,10 @@ class GitHistoryTests(Workspace):
         return self.git("rev-parse", "HEAD")
 
     def test_version_and_changelog_come_from_the_approved_commit_not_the_checkout(self):
+        """Authorize the real history fixture's merge SHA and read its recorded version and notes."""
         self.assertEqual("1.2.4", (self.root / "version.txt").read_text(encoding="utf-8").strip())
         remote = Remote()
+        remote.pulls[self.approved] = [release_pull(self.approved)]
         prepare.prepare(remote, REPO, TAG, self.approved, "version.txt", "CHANGELOG.md", runner=remote.run)
         self.assertEqual({TAG: self.approved}, remote.tags)
         self.assertEqual(SECTION, remote.payloads[0]["body"])
@@ -471,8 +575,32 @@ class GitHistoryTests(Workspace):
                 prepare.prepare(remote, REPO, tag, commit, path, runner=remote.run)
             self.assertEqual((0, []), (remote.reads, remote.writes))
 
+    def test_git_commands_leave_external_git_index_file_untouched(self):
+        """Repository-location variables must be stripped so fixture git never mutates an external index."""
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        outside_index = Path(outside.name) / "outside.index"
+        self.assertFalse(outside_index.exists())
+        with patch.dict(os.environ, {"GIT_INDEX_FILE": str(outside_index)}):
+            (self.root / "probe.txt").write_text("probe\n", encoding="utf-8")
+            self.commit("probe commit")
+        self.assertFalse(outside_index.exists())
+        self.assertEqual("probe", self.git("show", "HEAD:probe.txt"))
+
 
 class InterfaceTests(Workspace):
+    """Keep preparation's command, action and workflow contracts consistent."""
+
+    def test_prepare_job_grants_pull_request_reads_without_other_permission_changes(self):
+        """The commit-associated PR lookup needs an explicit read grant on the preparation job."""
+        root = Path(__file__).resolve().parents[1]
+        workflow = yaml.safe_load((root / prepare.WORKFLOW).read_text(encoding="utf-8"))
+        self.assertEqual({"contents": "read"}, workflow["permissions"])
+        self.assertEqual(
+            {"contents": "write", "actions": "write", "pull-requests": "read"},
+            workflow["jobs"]["prepare"]["permissions"],
+        )
+
     def test_command_passes_every_option_and_the_real_runner(self):
         base = ["prepare", "--repo", REPO, "--tag", TAG, "--commit", COMMIT]
         cases = (

@@ -79,11 +79,35 @@ def approved(info=FIRST):
     return {"guid": info["guid"], "repository": info["repository"], "signerWorkflow": ".github/workflows/release.yml"}
 
 
+GIT_LOCATION_VARIABLES = frozenset(
+    {
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_GRAFT_FILE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_PREFIX",
+        "GIT_SHALLOW_FILE",
+        "GIT_WORK_TREE",
+    }
+)
+
+
+def clean_git_env(**extra):
+    """Return os.environ with repository-location variables removed, preserving credentials and configuration."""
+    env = {key: value for key, value in os.environ.items() if key not in GIT_LOCATION_VARIABLES}
+    env.update(extra)
+    return env
+
+
 class Workspace(unittest.TestCase):
     def setUp(self):
         environment = patch.dict(os.environ, {"GITHUB_ACTIONS": "false", "GITHUB_OUTPUT": ""})
         environment.start()
         self.addCleanup(environment.stop)
+        for key in GIT_LOCATION_VARIABLES:
+            os.environ.pop(key, None)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
