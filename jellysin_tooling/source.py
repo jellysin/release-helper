@@ -18,6 +18,7 @@ from .common import (
     repository,
     require,
     semver,
+    source_archive_stem,
     timestamp,
 )
 from .github import command_bytes
@@ -75,7 +76,7 @@ def build(repo, tag, commit, created, output_directory, cwd=None):
     require(tag == "v" + version, "Tag does not match semver")
     require(isinstance(commit, str) and SHA.fullmatch(commit), "Expected full lowercase commit SHA")
     created = timestamp(created)
-    repo_name = repo.split("/")[1]
+    repo_name = source_archive_stem(repo)
     prefix = f"{repo_name}-{version}"
     name = f"{prefix}.tar.gz"
     archive = archive_bytes(commit, prefix, cwd=cwd)
@@ -127,7 +128,7 @@ def validate_release(value, repo, tag):
     asset = value["archive"]
     require(isinstance(asset, dict) and asset.keys() == {"name", "size", "sha256", "url"}, "Invalid archive metadata")
     name = filename(asset["name"])
-    repo_name = repo.split("/")[1]
+    repo_name = source_archive_stem(repo)
     require(name == f"{repo_name}-{version}.tar.gz", "Unexpected archive name")
     expected_url = f"https://github.com/{repo}/releases/download/{tag}/{name}"
     require(asset["url"] == expected_url, "Archive URL is outside approved release")
@@ -149,7 +150,7 @@ def validate_local(files, release, cwd=None):
         len(data) == asset["size"] and digest(data) == asset["sha256"],
         "Archive checksum mismatch",
     )
-    repo_name = release["repository"].split("/")[1]
+    repo_name = source_archive_stem(release["repository"])
     prefix = f"{repo_name}-{release['semver']}"
     regenerated = archive_bytes(release["commit"], prefix, cwd=cwd)
     require(data == regenerated, "Local archive differs from checkout archive")

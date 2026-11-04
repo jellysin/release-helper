@@ -8,11 +8,13 @@ inputs:
     description: Release artifact directory.
     default: dist
   repo:
-    description: Repository name (owner/repo); defaults to GITHUB_REPOSITORY when empty.
+    description: >-
+      Repository name (owner/repo); repo may start with one dot followed by an
+      alphanumeric; defaults to GITHUB_REPOSITORY when empty.
     default: ''
 outputs:
   archive:
-    description: Absolute path to the source tarball.
+    description: Absolute path to <repo>-<version>.tar.gz; a single leading repository dot is omitted.
     value: ${{ steps.package.outputs.archive }}
   directory:
     description: Absolute release artifact directory.

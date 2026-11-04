@@ -7,7 +7,7 @@ import os
 import tarfile
 from unittest.mock import Mock, patch
 
-from jellysin_tooling import source
+from jellysin_tooling import common, source
 from jellysin_tooling.cli import parser, run
 from jellysin_tooling.common import (
     MAX_ASSET,
@@ -88,6 +88,106 @@ class SourceReleaseTests(Workspace):
         tag = "v1.0.0"
         command(["git", "tag", "-a", tag, "-m", tag], cwd=str(repo_dir))
         return repo_dir, commit, tag
+
+    def test_repository_dot_name_and_component_bounds(self):
+        """Accept one leading repository dot within unchanged component bounds."""
+        for value in (
+            "jellysin/.github",
+            "jellysin/.a",
+            "jellysin/repo",
+            "a/b",
+            "owner./repo",
+            "a" * 100 + "/" + "b" * 100,
+            "a" * 100 + "/." + "b" * 99,
+        ):
+            with self.subTest(accepted=value):
+                self.assertEqual(value, common.repository(value))
+        for value in (
+            "jellysin/.",
+            "jellysin/..",
+            "jellysin/../other",
+            "jellysin/..x",
+            "jellysin/repo.",
+            "jellysin/.github.",
+            "jellysin/",
+            "/repo",
+            "/",
+            "",
+            ".owner/repo",
+            "jellysin/._repo",
+            "jellysin/.-repo",
+            "a" * 101 + "/repo",
+            "jellysin/" + "b" * 101,
+            "jellysin/." + "b" * 100,
+        ):
+            with self.subTest(refused=value), self.assertRaisesRegex(ValidationError, "Invalid repository"):
+                common.repository(value)
+
+    def test_source_archive_stem_preserves_plain_names_and_validates_dot_names(self):
+        """Strip exactly one validated leading dot and retain ordinary names."""
+        for name, expected in ((".github", "github"), ("repo", "repo"), (".a", "a"), (".a.b", "a.b")):
+            with self.subTest(name=name):
+                self.assertEqual(expected, common.source_archive_stem(f"jellysin/{name}"))
+        for value in ("jellysin/..github", "jellysin/.", "jellysin/.github.", "jellysin/." + "a" * 100):
+            with self.subTest(refused=value), self.assertRaisesRegex(ValidationError, "Invalid repository"):
+                common.source_archive_stem(value)
+
+    def test_dot_repository_source_build_and_local_validation_preserve_identity(self):
+        """Build and regenerate safe archives without changing repository or SPDX identity."""
+        for name, stem in ((".github", "github"), ("repo", "repo")):
+            prefix = f"{stem}-1.0.0"
+            tar_data = gzip.decompress(make_tar_gz({"README.md": b"# Source Repo\n"}, prefix=prefix))
+            with (
+                self.subTest(name=name),
+                patch("jellysin_tooling.source.command_bytes", return_value=tar_data) as archive,
+            ):
+                repo = f"jellysin/{name}"
+                output = self.root / stem
+                release = source.build(repo, "v1.0.0", COMMIT, CREATED, output)
+                self.assertEqual(f"{prefix}.tar.gz", release["archive"]["name"])
+                self.assertEqual(repo, release["repository"])
+                self.assertEqual(release, decode_json((output / "release.json").read_bytes()))
+                with tarfile.open(output / release["archive"]["name"], mode="r:gz") as tar:
+                    entries = tar.getmembers()
+                    self.assertTrue(any(entry.isdir() and entry.name == prefix for entry in entries))
+                    self.assertTrue(
+                        all(entry.name == prefix or entry.name.startswith(f"{prefix}/") for entry in entries)
+                    )
+                sbom = decode_json((output / "sbom.spdx.json").read_bytes())
+                self.assertEqual(name, sbom["packages"][0]["name"])
+                self.assertEqual(release, source.validate_release(release, repo, "v1.0.0"))
+                self.assertEqual(4, len(source.local_artifacts(output, release)))
+                self.assertEqual(2, archive.call_count)
+                for invocation in archive.call_args_list:
+                    self.assertEqual(
+                        (["git", "archive", "--format=tar", f"--prefix={prefix}/", COMMIT],), invocation.args
+                    )
+
+    def test_dot_repository_release_metadata_requires_safe_archive_name(self):
+        """Accept canonical stems and refuse a planted leading-dot archive name."""
+        for name, stem in ((".github", "github"), ("repo", "repo")):
+            repo = f"jellysin/{name}"
+            archive_name = f"{stem}-1.0.0.tar.gz"
+            url = f"https://github.com/{repo}/releases/download/v1.0.0/"
+            release = {
+                "schemaVersion": 1,
+                "kind": "source",
+                "repository": repo,
+                "semver": "1.0.0",
+                "tag": "v1.0.0",
+                "commit": COMMIT,
+                "timestamp": CREATED,
+                "archive": {"name": archive_name, "size": 100, "sha256": "a" * 64, "url": url + archive_name},
+            }
+            with self.subTest(name=name, accepted=archive_name):
+                self.assertEqual(release, source.validate_release(release, repo, "v1.0.0"))
+            for bad_name in (f".{archive_name}", "wrong-1.0.0.tar.gz"):
+                release["archive"].update(name=bad_name, url=url + bad_name)
+                with (
+                    self.subTest(name=name, refused=bad_name),
+                    self.assertRaisesRegex(ValidationError, "Unsafe filename|Unexpected archive name"),
+                ):
+                    source.validate_release(release, repo, "v1.0.0")
 
     def test_build_twice_on_temp_git_repo_produces_identical_bytes(self):
         repo_dir, commit, tag = self.make_git_repo()
