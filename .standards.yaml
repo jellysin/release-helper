@@ -53,4 +53,7 @@ exceptions:
     expires: 2026-11-12
 release:
   e2e:
-    since: fef62bfdde8bda83a3c226e0ca8990d9e1ecfb63
+    paths: [tests/e2e/**]
+    # #122 and #123 shipped before tests/e2e existed; their behaviour is now covered by
+    # tests/e2e/test_makefile_spaced_venv.py and tests/e2e/test_source_dot_repository.py.
+    since: e513af908c139b03054e93dd855e9e432e1e3b89
