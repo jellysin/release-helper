@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.2](https://github.com/jellysin/release-helper/compare/v1.6.1...v1.6.2) (2026-11-04)
+
+
+### Bug Fixes
+
+* **release:** tag only the release PR merge and keep verified bundles on retry ([#126](https://github.com/jellysin/release-helper/issues/126)) ([17153e5](https://github.com/jellysin/release-helper/commit/17153e53b83d2b3c36d8542659b0edf51ea8495b))
+
 ## [1.6.1](https://github.com/jellysin/release-helper/compare/v1.6.0...v1.6.1) (2026-11-04)
 
 
