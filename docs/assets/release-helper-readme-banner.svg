@@ -20,11 +20,11 @@
   <rect width="1200" height="120" rx="12" fill="url(#bg)"/>
 
   <g fill="none" stroke-linecap="round">
-    <path d="M780 78 C 850 48, 910 96, 980 70 S 1080 40, 1120 68 S 1160 92, 1170 60"
+    <path d="M890 78 C 930 50, 970 96, 1010 70 S 1090 42, 1125 68 S 1160 92, 1170 60"
           stroke="url(#wave)" stroke-width="14"/>
-    <path d="M780 78 C 850 48, 910 96, 980 70 S 1080 40, 1120 68 S 1160 92, 1170 60"
+    <path d="M890 78 C 930 50, 970 96, 1010 70 S 1090 42, 1125 68 S 1160 92, 1170 60"
           stroke="url(#accent)" stroke-width="2.5" opacity="0.95"/>
-    <path d="M780 84 C 850 58, 910 102, 980 78 S 1080 50, 1120 76 S 1160 98, 1170 68"
+    <path d="M890 84 C 930 58, 970 102, 1010 78 S 1090 50, 1125 76 S 1160 98, 1170 68"
           stroke="#06b6d4" stroke-width="1.6" stroke-dasharray="7 9" opacity="0.6"/>
   </g>
 
