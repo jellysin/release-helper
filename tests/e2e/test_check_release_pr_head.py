@@ -10,6 +10,10 @@ from tests.fixtures import Workspace
 from tests.test_release_config import init_git_repo
 
 TOOL = Path(__file__).resolve().parents[2] / "tools.py"
+PLACEHOLDER_PIN = "0123456789abcdef0123456789abcdef01234567"
+# Release commit of v1.6.2 (tag object resolves to it) and a stand-in for the next release commit.
+V1_6_2_PIN = "0c04f543518359a7fc56dfca10ed918ac9919d08"
+NEXT_PIN = "89abcdef0123456789abcdef0123456789abcdef"
 WORKFLOW = (
     "- uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n"
     "- uses: jellysin/release-helper/actions/prepare@0123456789abcdef0123456789abcdef01234567\n"
@@ -87,6 +91,25 @@ class CheckReleasePrHeadTests(Workspace):
         self.git("merge", "-q", "--no-ff", "-m", "Merge release PR", "release-please--branches--main")
         result = self.check_policy()
         self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_upgrade_from_a_1_6_2_pin_on_the_release_pr_head_passes(self):
+        """A consumer released under the v1.6.2 pin; its release PR head moves the pin and bumps the version."""
+        workflow = self.repo / ".github" / "workflows" / "ci.yml"
+        workflow.write_text(WORKFLOW.replace(PLACEHOLDER_PIN, V1_6_2_PIN + " # v1.6.2"), encoding="utf-8")
+        self.git("checkout", "-q", "main")
+        self.release = self.commit("chore(main): release 1.0.0 under release-helper v1.6.2")
+        self.git("tag", "-a", "v1.0.0", "-m", "v1.0.0", self.release)
+        config = {"packages": {".": {"package-name": "consumer"}}, "last-release-sha": self.release}
+        (self.repo / "release-please-config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        self.commit("feat: pin the last release")
+        self.git("checkout", "-q", "-B", "release-please--branches--main")
+        workflow.write_text(WORKFLOW.replace(PLACEHOLDER_PIN, NEXT_PIN + " # v1.7.0"), encoding="utf-8")
+        self.commit("chore(deps): update jellysin/release-helper to v1.7.0")
+        self.write_manifest("1.1.0")
+        self.commit("chore(main): release 1.1.0")
+        result = self.check_policy()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", self.git("tag", "--list", "v1.1.0"))
 
     def test_release_pr_head_with_stale_sha_still_fails(self):
         """The 1.0.0 tag sits on a later commit, so the pinned sha is older than the release."""
