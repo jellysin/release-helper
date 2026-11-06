@@ -123,6 +123,8 @@ class StaleLastReleaseShaTests(Workspace):
         command(["git", "init", "-b", "main"], cwd=str(repo_dir))
         command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
         command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
+        command(["git", "config", "tag.gpgSign", "false"], cwd=str(repo_dir))
+        command(["git", "config", "commit.gpgSign", "false"], cwd=str(repo_dir))
 
         file1 = repo_dir / "file.txt"
         file1.write_text("initial\n", encoding="utf-8")
@@ -143,6 +145,22 @@ class StaleLastReleaseShaTests(Workspace):
         commit2 = command(["git", "rev-parse", "HEAD"], cwd=str(repo_dir))
 
         return repo_dir, commit1, commit2
+
+    def make_manifest_repo(self, parent_version="1.0.0", head_version="1.0.1"):
+        repo_dir, commit1, _commit2 = self.make_git_repo()
+        manifest_file = repo_dir / ".release-please-manifest.json"
+        manifest_file.write_text(f'{{\n  ".": "{parent_version}"\n}}\n', encoding="utf-8")
+        command(["git", "add", ".release-please-manifest.json"], cwd=str(repo_dir))
+        command(["git", "commit", "-m", f"Release {parent_version}"], cwd=str(repo_dir))
+        parent_commit = command(["git", "rev-parse", "HEAD"], cwd=str(repo_dir))
+
+        manifest_file.write_text(f'{{\n  ".": "{head_version}"\n}}\n', encoding="utf-8")
+        (repo_dir / "bump.txt").write_text(f"{head_version}\n", encoding="utf-8")
+        command(["git", "add", "."], cwd=str(repo_dir))
+        command(["git", "commit", "-m", f"chore: release {head_version}"], cwd=str(repo_dir))
+        head_commit = command(["git", "rev-parse", "HEAD"], cwd=str(repo_dir))
+
+        return repo_dir, parent_commit, head_commit, commit1
 
     def test_positive_sha_equals_tag_commit_passes(self):
         repo_dir, _commit1, commit2 = self.make_git_repo()
@@ -189,6 +207,67 @@ class StaleLastReleaseShaTests(Workspace):
     def test_missing_tag_fails_closed(self):
         repo_dir, commit1, _commit2 = self.make_git_repo()
         config = {"last-release-sha": commit1}
+        manifest = {".": "1.0.0"}
+        with self.assertRaisesRegex(
+            ValidationError,
+            r"Release tag 'v1\.0\.0' is absent although a workflow runs release-helper actions/prepare",
+        ):
+            releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+
+    def test_planted_green_release_pr_head_absent_tag_passes_with_parent_tag(self):
+        repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
+        command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", parent_commit], cwd=str(repo_dir))
+        config = {"last-release-sha": parent_commit}
+        manifest = {".": "1.0.1"}
+        releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+
+    def test_release_pr_head_older_than_release_fails(self):
+        repo_dir, parent_commit, _head_commit, ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
+        command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", parent_commit], cwd=str(repo_dir))
+        config = {"last-release-sha": ancestor}
+        manifest = {".": "1.0.1"}
+        with self.assertRaisesRegex(ValidationError, "older than release 1.0.0 tag commit"):
+            releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+
+    def test_release_pr_head_unchanged_version_tag_absent_fails_closed(self):
+        repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.0")
+        config = {"last-release-sha": parent_commit}
+        manifest = {".": "1.0.0"}
+        with self.assertRaisesRegex(
+            ValidationError,
+            r"Release tag 'v1\.0\.0' is absent although a workflow runs release-helper actions/prepare",
+        ):
+            releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+
+    def test_release_pr_head_previous_tag_absent_fails_closed(self):
+        repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
+        config = {"last-release-sha": parent_commit}
+        manifest = {".": "1.0.1"}
+        with self.assertRaisesRegex(
+            ValidationError,
+            r"Release tag 'v1\.0\.1' is absent although a workflow runs release-helper actions/prepare",
+        ):
+            releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
+
+    def test_single_commit_repo_tag_absent_fails_closed(self):
+        repo_dir = self.root / "single-commit-repo"
+        repo_dir.mkdir(parents=True, exist_ok=True)
+        command(["git", "init", "-b", "main"], cwd=str(repo_dir))
+        command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
+        command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
+        command(["git", "config", "tag.gpgSign", "false"], cwd=str(repo_dir))
+        command(["git", "config", "commit.gpgSign", "false"], cwd=str(repo_dir))
+        wf = repo_dir / ".github" / "workflows" / "prepare-release.yml"
+        wf.parent.mkdir(parents=True, exist_ok=True)
+        wf.write_text(
+            "      - uses: jellysin/release-helper/actions/prepare@0123456789abcdef0123456789abcdef01234567 # v1.6.0\n",
+            encoding="utf-8",
+        )
+        (repo_dir / ".release-please-manifest.json").write_text('{\n  ".": "1.0.0"\n}\n', encoding="utf-8")
+        command(["git", "add", "."], cwd=str(repo_dir))
+        command(["git", "commit", "-m", "Initial commit"], cwd=str(repo_dir))
+        commit = command(["git", "rev-parse", "HEAD"], cwd=str(repo_dir))
+        config = {"last-release-sha": commit}
         manifest = {".": "1.0.0"}
         with self.assertRaisesRegex(
             ValidationError,
@@ -342,6 +421,8 @@ class CheckPolicyCliEndToEndTests(Workspace):
         command(["git", "init", "-b", "main"], cwd=str(repo_dir))
         command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
         command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
+        command(["git", "config", "tag.gpgSign", "false"], cwd=str(repo_dir))
+        command(["git", "config", "commit.gpgSign", "false"], cwd=str(repo_dir))
 
         for name in ("LICENSE", "README.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md", "renovate.json"):
             (repo_dir / name).write_text("{}" if name.endswith("json") else "Doc\n", encoding="utf-8")
