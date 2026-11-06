@@ -16,8 +16,8 @@ WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "rele
 RELEASE_AUTOMATION = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-automation.yml"
 STUB = Path(__file__).with_name("stub_gh.py")
 LABELS = "Mark merged release PRs whose tag names their merge commit"
-APP_TOKEN = "      - name: Mint the release token\n"
-APP_TOKEN_ACTION = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
+MINT_STEP = "      - name: Mint the release token\n"
+MINT_ACTION = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
 INTERPRETER = "Refuse an interpreter other than the pinned one"
 CHECKOUT = "      - uses: actions/checkout@"
 SETUP = "      - uses: actions/setup-python@"
@@ -294,19 +294,21 @@ class WorkflowShapeTests(unittest.TestCase):
 
     def test_app_token_step_precedes_release_please_with_pinned_action_and_required_parameters(self):
         contents = WORKFLOW.read_text(encoding="utf-8")
-        token_step_pos = contents.index(APP_TOKEN)
+        token_step_pos = contents.index(MINT_STEP)
         release_step_pos = contents.index(ACTION)
         self.assertLess(token_step_pos, release_step_pos)
 
         job_section = contents.split("  release:\n", 1)[1]
-        self.assertIn(APP_TOKEN, job_section)
+        self.assertIn(MINT_STEP, job_section)
         self.assertIn(ACTION, job_section)
 
         step_lines = [line.strip() for line in contents[token_step_pos:release_step_pos].splitlines()]
-        self.assertIn(f"uses: {APP_TOKEN_ACTION}", step_lines)
+        self.assertIn(f"uses: {MINT_ACTION}", step_lines)
         self.assertIn("id: app-token", step_lines)
         self.assertIn("client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}", step_lines)
         self.assertIn("private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}", step_lines)
+        requested = sorted(line for line in step_lines if line.startswith("permission-"))
+        self.assertEqual(["permission-contents: write", "permission-pull-requests: write"], requested)
         self.assertFalse(any(line.startswith("if:") for line in step_lines))
         self.assertFalse(any(line.startswith("continue-on-error:") for line in step_lines))
         self.assertFalse(any(line.startswith("owner:") for line in step_lines))

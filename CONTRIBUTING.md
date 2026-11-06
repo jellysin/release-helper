@@ -66,9 +66,11 @@ Release-please collects conventional commits in release PRs and maintains propos
 versions and changelogs. The shared workflow sets `skip-github-release: true` and
 opens release PRs with the release GitHub App token (README, release PR preparation),
 so their CI starts from `pull_request` events without a dispatch.
-A main merge can open or update a release PR; it cannot create a tag, draft or
-published release. Merging the release PR updates version files and changelogs
-without publication. The reusable workflow has no publication inputs or tag output.
+A main merge can open or update a release PR. The release-please step cannot create a
+tag, draft or published release. When `prepare-release` is enabled, the workflow can
+dispatch `prepare-release.yml` for an untagged merged release PR. Merging the release
+PR updates version files and changelogs. The reusable workflow has no publication
+inputs or tag output.
 
 Release cadence batches features on the open milestone next(V), where V is the manifest
 version. The release PR waits until that milestone is closed (or carries the label
