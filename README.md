@@ -115,12 +115,20 @@ it, release-please uses `GITHUB_TOKEN`:
 - the caller repository must enable **Allow GitHub Actions to create and approve pull
   requests** (Settings > Actions > General), or `GITHUB_TOKEN` cannot open the release PR;
   a caller that cannot enable it passes the App key;
-- `pull_request` runs of the release PR start in an approval-required state; a user with
-  write access starts them with **Approve workflows to run**.
+- `pull_request` runs for the release PR's `opened`, `synchronize` and `reopened` events start
+  in an approval-required state; a user with write access starts them with **Approve
+  workflows to run**. Other activity types, such as `labeled`, start no run.
 
-A caller with the release GitHub App passes the key explicitly:
+On both paths the calling job grants the permissions the release job requests, since a
+called workflow cannot raise the caller's token permissions. A caller with the release
+GitHub App also passes the key explicitly:
 
 ```yaml
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
     uses: jellysin/release-helper/.github/workflows/release-please.yml@<sha> # v1.7.0
     secrets:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

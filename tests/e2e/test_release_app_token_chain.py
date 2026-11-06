@@ -81,6 +81,17 @@ class ReleaseAppTokenChainTests(unittest.TestCase):
                 self.assertTrue(job["uses"].split("@")[0].endswith(".github/workflows/release-please.yml"))
                 self.assertEqual({APP_KEY_INPUT: f"${{{{ secrets.{APP_KEY_INPUT} }}}}"}, job["secrets"])
 
+    def test_each_caller_grants_every_permission_the_release_job_requests(self):
+        """A called workflow cannot raise the caller's token permissions, so each caller grants them all."""
+        requested = self.job["permissions"]
+        self.assertTrue(requested)
+        callers = {"release-automation.yml": self.caller["jobs"]["release"], "README.md": readme_caller_example()}
+        for name, job in callers.items():
+            with self.subTest(caller=name):
+                granted = job.get("permissions", {})
+                for scope, level in requested.items():
+                    self.assertEqual(level, granted.get(scope), f"{name} does not grant {scope}: {level}")
+
     def test_minted_token_reaches_release_please_and_no_other_step(self):
         """Mint step runs conditionally on env flag; release-please takes App token or GITHUB_TOKEN fallback."""
         job_env = self.job.get("env", {})
