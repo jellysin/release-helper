@@ -15,7 +15,10 @@ PATH = re.compile(r"^    path: (?P<path>\S+)$", re.MULTILINE)
 
 def exception_paths(text):
     """Return (rule, path) for each entry of the exceptions list that names a path."""
-    section = text.split("\nexceptions:\n", 1)[1]
+    parts = text.split("\nexceptions:\n", 1)
+    if len(parts) == 1:
+        return []
+    section = parts[1]
     found = []
     for entry in ENTRY.finditer(section):
         for match in PATH.finditer(entry["body"]):
@@ -32,6 +35,9 @@ class StandardsExceptionTests(unittest.TestCase):
             "  - rule: HISS-18\n    path: b.yml\n    reason: r\n    expires: x\n"
         )
         self.assertEqual(exception_paths(text), [("HISS-11", "a.yml"), ("HISS-18", "b.yml")])
+
+    def test_reader_returns_nothing_without_an_exceptions_list(self):
+        self.assertEqual(exception_paths("version: 1\nrelease:\n  e2e: {}\n"), [])
 
     def test_every_exception_path_exists(self):
         entries = exception_paths((ROOT / ".standards.yaml").read_text(encoding="utf-8"))

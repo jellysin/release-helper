@@ -64,10 +64,11 @@ of that check and keeps no private variant.
 
 Release-please collects conventional commits in release PRs and maintains proposed
 versions and changelogs. The shared workflow sets `skip-github-release: true` and
-dispatches only the caller's `ci.yml` for returned release PR branches. A main merge
-can open or update a release PR; it cannot create a tag, draft or published release.
-Merging the release PR updates version files and changelogs without publication.
-The reusable workflow has no publication inputs or tag output.
+opens release PRs with the release GitHub App token (README, release PR preparation),
+so their CI starts from `pull_request` events without a dispatch.
+A main merge can open or update a release PR; it cannot create a tag, draft or
+published release. Merging the release PR updates version files and changelogs
+without publication. The reusable workflow has no publication inputs or tag output.
 
 Release cadence batches features on the open milestone next(V), where V is the manifest
 version. The release PR waits until that milestone is closed (or carries the label
@@ -141,16 +142,13 @@ The publisher independently enforces this context, all original provenance check
 and numeric release identity. A vanished draft requires investigation, not a
 replacement selected by tag.
 
-Use only the calling repository's GITHUB_TOKEN. Plugin repository updates run in
-`jellysin/repo`, which opens its own PR. No cross-repository write token, release
-App, runtime package, or installed plugin dependency is required.
+The release App token opens release PRs only; every other step uses the calling
+repository's GITHUB_TOKEN. Plugin repository updates run in `jellysin/repo`, which opens its own PR.
+No cross-repository write token, runtime package, or installed plugin dependency
+is required.
 
 Workflow defaults are read-only. Writes belong to the narrow jobs that need them.
-Bot CI explicitly dispatches the PR branch. No workflow assumes a token-created
-event will recursively trigger another workflow.
-GitHub may also create an approval-required PR run for each bot-authored update.
-Review the current PR and approve that real run before merging; a successful
-dispatch does not replace its approval. Do not fabricate checks or weaken protection.
+Do not fabricate checks or weaken protection.
 
 ## Security release procedure
 
