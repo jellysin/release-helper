@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/jellysin/release-helper/compare/v1.6.2...v1.7.0) (2026-11-06)
+
+
+### Features
+
+* **release:** make the release App key optional ([#137](https://github.com/jellysin/release-helper/issues/137)) ([cf43615](https://github.com/jellysin/release-helper/commit/cf43615f7dfbed409c111c2828586b8c2c3d2eb0))
+* **release:** open release PRs with the release App token ([#133](https://github.com/jellysin/release-helper/issues/133)) ([b68bd8c](https://github.com/jellysin/release-helper/commit/b68bd8c8cf4cc37896ca5f7a7ce0cb4a16bee34d))
+
+
+### Bug Fixes
+
+* **check:** accept a release PR head whose version tag is not cut yet ([#132](https://github.com/jellysin/release-helper/issues/132)) ([ac3baff](https://github.com/jellysin/release-helper/commit/ac3baffa74858124b97d4505f57b2a12fad70661))
+* **release:** dispatch release PR checks on the GITHUB_TOKEN path ([#140](https://github.com/jellysin/release-helper/issues/140)) ([10549e6](https://github.com/jellysin/release-helper/commit/10549e609dc99166a883cccdc0c2c6dc1b74c733))
+
 ## [1.6.2](https://github.com/jellysin/release-helper/compare/v1.6.1...v1.6.2) (2026-11-04)
 
 
