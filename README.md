@@ -118,7 +118,10 @@ it, release-please uses `GITHUB_TOKEN`:
 - the workflow dispatches the caller's `ci.yml` on the release PR branch, as 1.6.2 did, so
   the caller's checks run on the release PR head; the caller's `ci.yml` needs a
   `workflow_dispatch` trigger. The release PR's own `pull_request` runs (`opened`,
-  `synchronize`, `reopened`) still start in an approval-required state.
+  `synchronize`, `reopened`) still start in an approval-required state, and the dispatch
+  covers only `ci.yml`: required checks from other workflows, such as CodeQL, and any
+  required check the ruleset takes only from `pull_request` runs report once a user with
+  write access approves those runs with **Approve workflows to run**.
 
 On both paths the calling job grants the permissions the release job requests, since a
 called workflow cannot raise the caller's token permissions. A caller with the release
