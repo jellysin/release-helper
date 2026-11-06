@@ -27,13 +27,27 @@ DRAFT_STOP_STEP_TEXT = (
     '          echo "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\n'
     "          exit 1\n"
 )
+DRAFT_STOP_RUN = 'echo "::error title=$TITLE::$MESSAGE"\necho "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\nexit 1\n'
 DRAFT_STOP_JOBS_CI = ("checks", "secrets", "trivy", "semgrep", "governance")
 DRAFT_STOP_JOBS_CODEQL = ("analyze",)
+
+
+def _is_valid_draft_stop_env(env: object) -> bool:
+    """Return True if env has exactly TITLE and MESSAGE keys with expected values."""
+    if not isinstance(env, dict) or set(env.keys()) != {"TITLE", "MESSAGE"}:
+        return False
+    expected_msg = (
+        "The gate did not run because the pull request is a draft. "
+        "It runs when the pull request is marked ready for review."
+    )
+    return env.get("TITLE") == "Gate not run on a draft" and env.get("MESSAGE") == expected_msg
 
 
 def is_draft_stop_step(step: object) -> bool:
     """Return True if step matches the required draft stop step specification."""
     if not isinstance(step, dict):
+        return False
+    if "continue-on-error" in step or "uses" in step:
         return False
     if step.get("name") != "Stop on a draft pull request":
         return False
@@ -41,17 +55,9 @@ def is_draft_stop_step(step: object) -> bool:
         return False
     if step.get("shell") != "bash":
         return False
-    env = step.get("env")
-    if not isinstance(env, dict) or env.get("TITLE") != "Gate not run on a draft":
+    if step.get("run") != DRAFT_STOP_RUN:
         return False
-    expected_msg = (
-        "The gate did not run because the pull request is a draft. "
-        "It runs when the pull request is marked ready for review."
-    )
-    if env.get("MESSAGE") != expected_msg:
-        return False
-    run = step.get("run")
-    return isinstance(run, str) and run.strip().endswith("exit 1")
+    return _is_valid_draft_stop_env(step.get("env"))
 
 
 def job_has_draft_stop(job: object) -> bool:
@@ -294,18 +300,26 @@ class RequiredChecksTests(unittest.TestCase):
                 job = codeql_data.get("jobs", {}).get(job_id)
                 self.assertTrue(job_has_draft_stop(job))
 
-    def test_pr_triggers_include_ready_for_review(self):
-        """Ensure both ci.yml and codeql.yml pull_request triggers list ready_for_review."""
+    def test_pr_triggers_include_draft_transitions(self):
+        """Ensure both ci.yml and codeql.yml pull_request triggers list draft transition types."""
         ci_data = yaml.safe_load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"))
         ci_triggers = ci_data.get("on") or ci_data.get(True) or {}
         ci_pr_types = ci_triggers.get("pull_request", {}).get("types", [])
-        expected_ci_types = ["opened", "synchronize", "reopened", "labeled", "unlabeled", "ready_for_review"]
+        expected_ci_types = [
+            "opened",
+            "synchronize",
+            "reopened",
+            "labeled",
+            "unlabeled",
+            "ready_for_review",
+            "converted_to_draft",
+        ]
         self.assertEqual(ci_pr_types, expected_ci_types)
 
         codeql_data = yaml.safe_load((WORKFLOW_DIR / "codeql.yml").read_text(encoding="utf-8"))
         codeql_triggers = codeql_data.get("on") or codeql_data.get(True) or {}
         codeql_pr_types = codeql_triggers.get("pull_request", {}).get("types", [])
-        expected_codeql_types = ["opened", "synchronize", "reopened", "ready_for_review"]
+        expected_codeql_types = ["opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft"]
         self.assertEqual(codeql_pr_types, expected_codeql_types)
 
     def test_planted_proof_job_copy_without_draft_step_detected(self):
@@ -327,7 +341,7 @@ class RequiredChecksTests(unittest.TestCase):
         self.assertFalse(job_has_draft_stop(codeql_copy))
 
     def test_draft_stop_step_boundary_conditions(self):
-        """Ensure boundary variations on step if condition and run exit code fail validation."""
+        """Ensure boundary variations on step if condition, run script, env, and flags fail validation."""
         valid_step = {
             "name": "Stop on a draft pull request",
             "if": "github.event.pull_request.draft == true",
@@ -339,7 +353,7 @@ class RequiredChecksTests(unittest.TestCase):
                     "It runs when the pull request is marked ready for review."
                 ),
             },
-            "run": ('echo "::error title=$TITLE::$MESSAGE"\necho "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\nexit 1\n'),
+            "run": DRAFT_STOP_RUN,
         }
         self.assertTrue(is_draft_stop_step(valid_step))
 
@@ -357,7 +371,20 @@ class RequiredChecksTests(unittest.TestCase):
             'echo "$MESSAGE"\nexit 0\n',
             'echo "$MESSAGE"\nexit 2\n',
             'echo "done"\n',
+            'echo "::error title=$TITLE::$MESSAGE"\necho "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\necho "extra"\nexit 1\n',
         ):
             step = copy.deepcopy(valid_step)
             step["run"] = bad_run
             self.assertFalse(is_draft_stop_step(step))
+
+        extra_env_step = copy.deepcopy(valid_step)
+        extra_env_step["env"]["EXTRA"] = "unexpected"
+        self.assertFalse(is_draft_stop_step(extra_env_step))
+
+        continue_on_error_step = copy.deepcopy(valid_step)
+        continue_on_error_step["continue-on-error"] = True
+        self.assertFalse(is_draft_stop_step(continue_on_error_step))
+
+        uses_step = copy.deepcopy(valid_step)
+        uses_step["uses"] = "actions/checkout@v4"
+        self.assertFalse(is_draft_stop_step(uses_step))
