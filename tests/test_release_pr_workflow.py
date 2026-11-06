@@ -298,14 +298,17 @@ class WorkflowShapeTests(unittest.TestCase):
         key_lines = [line.strip() for line in secrets_block.split("RELEASE_APP_PRIVATE_KEY:\n", 1)[1].splitlines()]
         self.assertIn("required: false", key_lines)
 
+    def assert_token_steps_in_order(self, contents):
+        """Assert mint, path and release-please steps appear in that order; return their offsets."""
+        positions = (contents.index(MINT_STEP), contents.index(PATH_STEP), contents.index(ACTION))
+        self.assertLess(positions[0], positions[1])
+        self.assertLess(positions[1], positions[2])
+        return positions
+
     def test_app_token_step_precedes_release_please_with_pinned_action_and_required_parameters(self):
         """One conditional, pinned mint step precedes release-please and requests only the granted permissions."""
         contents = WORKFLOW.read_text(encoding="utf-8")
-        token_step_pos = contents.index(MINT_STEP)
-        path_step_pos = contents.index(PATH_STEP)
-        release_step_pos = contents.index(ACTION)
-        self.assertLess(token_step_pos, path_step_pos)
-        self.assertLess(path_step_pos, release_step_pos)
+        token_step_pos, path_step_pos, release_step_pos = self.assert_token_steps_in_order(contents)
 
         job_section = contents.split("  release:\n", 1)[1]
         self.assertIn(MINT_STEP, job_section)
@@ -326,11 +329,7 @@ class WorkflowShapeTests(unittest.TestCase):
     def test_path_step_announces_token_source_before_release_please(self):
         """A bounded shell step announces whether the App token or fallback is used."""
         contents = WORKFLOW.read_text(encoding="utf-8")
-        token_step_pos = contents.index(MINT_STEP)
-        path_step_pos = contents.index(PATH_STEP)
-        release_step_pos = contents.index(ACTION)
-        self.assertLess(token_step_pos, path_step_pos)
-        self.assertLess(path_step_pos, release_step_pos)
+        token_step_pos, path_step_pos, release_step_pos = self.assert_token_steps_in_order(contents)
 
         path_lines = [line.strip() for line in contents[path_step_pos:release_step_pos].splitlines()]
         self.assertIn("timeout-minutes: 1", path_lines)
