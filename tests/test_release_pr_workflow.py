@@ -336,7 +336,7 @@ class WorkflowShapeTests(unittest.TestCase):
         app_msg = "release token: GitHub App installation token (RELEASE_APP_PRIVATE_KEY set)"
         fallback_msg = (
             "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent);"
-            " release PR events do not start pull_request CI"
+            " release PR pull_request runs wait for Approve workflows to run"
         )
         self.assertIn(app_msg, contents[path_step_pos:release_step_pos])
         self.assertIn(fallback_msg, contents[path_step_pos:release_step_pos])

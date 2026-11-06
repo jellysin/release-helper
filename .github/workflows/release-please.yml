@@ -133,7 +133,7 @@ jobs:
           if [ "$RELEASE_APP_KEY_SET" = "true" ]; then
             echo "release token: GitHub App installation token (RELEASE_APP_PRIVATE_KEY set)"
           else
-            echo "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent); release PR events do not start pull_request CI"
+            echo "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent); release PR pull_request runs wait for Approve workflows to run"
           fi
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
