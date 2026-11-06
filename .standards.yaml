@@ -45,12 +45,6 @@ register:
         kind: message
         format: json
         selector: invariants.*
-exceptions:
-  - rule: release-token
-    path: .github/workflows/release-please.yml
-    category: C
-    reason: "category C: release-please runs on the workflow token and a following step dispatches the release pull request checks explicitly; an App token needs a GitHub App the operator creates (DECISION release-helper-release-app-token-20261102)"
-    expires: 2026-11-12
 release:
   e2e:
     paths: [tests/e2e/**]

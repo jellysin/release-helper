@@ -13,9 +13,11 @@ from textwrap import dedent
 from tests.stub_gh import PENDING, RAW_ERROR_BODY, TAGGED
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-please.yml"
+RELEASE_AUTOMATION = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-automation.yml"
 STUB = Path(__file__).with_name("stub_gh.py")
 LABELS = "Mark merged release PRs whose tag names their merge commit"
-DISPATCH = "Explicitly dispatch release PR checks"
+MINT_STEP = "      - name: Mint the release token\n"
+MINT_ACTION = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
 INTERPRETER = "Refuse an interpreter other than the pinned one"
 CHECKOUT = "      - uses: actions/checkout@"
 SETUP = "      - uses: actions/setup-python@"
@@ -24,7 +26,6 @@ START = "          python3 - <<'PY'\n"
 REPO = "jellysin/plugin-lastfm"
 MERGE, OTHER, ANNOTATION = "a" * 40, "b" * 40, "c" * 40
 BRANCH = "release-please--branches--main--components--plugin"
-RELEASE_PR = {"headBranchName": "release-please--branches--main", "baseBranchName": "main"}
 
 
 def source(step, workflow=WORKFLOW):
@@ -93,51 +94,6 @@ class StepCase(unittest.TestCase):
         self.assertIn(message, done.stderr)
         self.assertNotIn(RAW_ERROR_BODY, done.stdout + done.stderr.replace("stub gh", ""))
         return done
-
-
-class ReleasePrWorkflowTests(StepCase):
-    step = DISPATCH
-
-    def dispatch(self, prs, **changes):
-        state = forge(**changes)
-        # A stale caller environment must not enable the removed publication path.
-        stale = {"RELEASE_TAG": "v1.0.0", "PUBLISH_RELEASE": "true", "PUBLICATION_WORKFLOW": "release.yml"}
-        return state, self.execute(state, RELEASE_PRS=json.dumps(prs), **stale)
-
-    def test_no_pull_requests_never_dispatches_publication(self):
-        state, done = self.dispatch([])
-        self.assertEqual((0, []), (done.returncode, state["calls"]))
-
-    def test_dispatches_only_ci_for_returned_release_pr_branches(self):
-        branches = ["release-please--branches--main", "release-please--branches--main--components--second"]
-        state, done = self.dispatch([{"headBranchName": branch, "baseBranchName": "main"} for branch in branches])
-        self.assertEqual(0, done.returncode)
-        expected = [["workflow", "run", "ci.yml", "--repo", REPO, "--ref", branch] for branch in branches]
-        self.assertEqual(expected, state["calls"])
-
-    def test_accepts_at_most_twenty_release_prs(self):
-        state, done = self.dispatch([RELEASE_PR] * 20)
-        self.assertEqual((0, 20), (done.returncode, len(state["calls"])))
-        state, done = self.dispatch([RELEASE_PR] * 21)
-        self.assertIn("Unexpected release PR output", done.stderr)
-        self.assertEqual((1, []), (done.returncode, state["calls"]))
-
-    def test_rejects_invalid_output_and_unexpected_branches(self):
-        cases = [
-            {},
-            [{"headBranchName": "main", "baseBranchName": "main"}],
-            [{"headBranchName": "release-please--branches--main", "baseBranchName": "other"}],
-        ]
-        for prs in cases:
-            with self.subTest(prs=prs):
-                state, done = self.dispatch(prs)
-                self.assertIn("Unexpected release PR", done.stderr)
-                self.assertEqual((1, []), (done.returncode, state["calls"]))
-
-    def test_dispatch_failure_stops_the_remaining_batch(self):
-        state, done = self.dispatch([RELEASE_PR, RELEASE_PR], fail="every")
-        self.assertIn("CalledProcessError", done.stderr)
-        self.assertEqual((1, 1), (done.returncode, len(state["calls"])))
 
 
 class ReleaseLabelTests(StepCase):
@@ -311,21 +267,67 @@ class ReleaseLabelTests(StepCase):
 
 
 class WorkflowShapeTests(unittest.TestCase):
-    def test_labels_are_judged_before_release_please_runs_and_checks_are_dispatched_after(self):
+    def test_labels_are_judged_before_release_please_runs_and_no_dispatch_step(self):
         contents = WORKFLOW.read_text(encoding="utf-8")
         positions = [contents.index(f"      - name: {LABELS}\n"), contents.index(ACTION)]
-        positions.append(contents.index(f"      - name: {DISPATCH}\n"))
         self.assertEqual(sorted(positions), positions)
-        self.assertEqual(3, contents.count(START))
+        self.assertNotIn("Explicitly dispatch release PR checks", contents)
+        self.assertEqual(2, contents.count(START))
         self.assertEqual(1, contents.count("skip-github-release: true"))
 
     def test_every_external_process_has_a_deadline(self):
-        for step in (LABELS, DISPATCH):
+        for step in (LABELS,):
             with self.subTest(step=step):
                 calls = [line for line in source(step).splitlines() if "subprocess.run(" in line]
                 self.assertTrue(calls)
                 for call in calls:
                     self.assertIn("timeout=60)", call)
+
+    def test_workflow_call_declares_release_app_private_key_required_secret(self):
+        contents = WORKFLOW.read_text(encoding="utf-8")
+        workflow_call = contents.split("workflow_call:\n", 1)[1].split("permissions:\n", 1)[0]
+        self.assertIn("secrets:\n", workflow_call)
+        secrets_block = workflow_call.split("secrets:\n", 1)[1]
+        self.assertIn("RELEASE_APP_PRIVATE_KEY:\n", secrets_block)
+        key_lines = [line.strip() for line in secrets_block.split("RELEASE_APP_PRIVATE_KEY:\n", 1)[1].splitlines()]
+        self.assertIn("required: true", key_lines)
+
+    def test_app_token_step_precedes_release_please_with_pinned_action_and_required_parameters(self):
+        contents = WORKFLOW.read_text(encoding="utf-8")
+        token_step_pos = contents.index(MINT_STEP)
+        release_step_pos = contents.index(ACTION)
+        self.assertLess(token_step_pos, release_step_pos)
+
+        job_section = contents.split("  release:\n", 1)[1]
+        self.assertIn(MINT_STEP, job_section)
+        self.assertIn(ACTION, job_section)
+
+        step_lines = [line.strip() for line in contents[token_step_pos:release_step_pos].splitlines()]
+        self.assertIn(f"uses: {MINT_ACTION}", step_lines)
+        self.assertIn("id: app-token", step_lines)
+        self.assertIn("client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}", step_lines)
+        self.assertIn("private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}", step_lines)
+        requested = sorted(line for line in step_lines if line.startswith("permission-"))
+        self.assertEqual(["permission-contents: write", "permission-pull-requests: write"], requested)
+        self.assertFalse(any(line.startswith("if:") for line in step_lines))
+        self.assertFalse(any(line.startswith("continue-on-error:") for line in step_lines))
+        self.assertFalse(any(line.startswith("owner:") for line in step_lines))
+        self.assertFalse(any(line.startswith("repositories:") for line in step_lines))
+
+    def test_release_please_uses_app_token_and_never_receives_github_token(self):
+        contents = WORKFLOW.read_text(encoding="utf-8")
+        release_section = contents[contents.index(ACTION) :]
+        release_lines = [line.strip() for line in release_section.splitlines() if line.strip()]
+        self.assertIn("token: ${{ steps.app-token.outputs.token }}", release_lines)
+        self.assertNotIn("github.token", release_section)
+        self.assertNotIn("secrets.GITHUB_TOKEN", release_section)
+
+    def test_release_automation_passes_release_app_private_key_secret(self):
+        contents = RELEASE_AUTOMATION.read_text(encoding="utf-8")
+        self.assertIn("secrets:\n", contents)
+        secrets_block = contents.split("secrets:\n", 1)[1]
+        lines = [line.strip() for line in secrets_block.splitlines() if line.strip()]
+        self.assertIn("RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}", lines)
 
 
 class InterpreterPinTests(unittest.TestCase):
