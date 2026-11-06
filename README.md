@@ -115,9 +115,13 @@ it, release-please uses `GITHUB_TOKEN`:
 - the caller repository must enable **Allow GitHub Actions to create and approve pull
   requests** (Settings > Actions > General), or `GITHUB_TOKEN` cannot open the release PR;
   a caller that cannot enable it passes the App key;
-- `pull_request` runs for the release PR's `opened`, `synchronize` and `reopened` events start
-  in an approval-required state; a user with write access starts them with **Approve
-  workflows to run**. Other activity types, such as `labeled`, start no run.
+- the workflow dispatches the caller's `ci.yml` on the release PR branch, as 1.6.2 did, so
+  the caller's checks run on the release PR head; the caller's `ci.yml` needs a
+  `workflow_dispatch` trigger. The release PR's own `pull_request` runs (`opened`,
+  `synchronize`, `reopened`) still start in an approval-required state, and the dispatch
+  covers only `ci.yml`: required checks from other workflows, such as CodeQL, and any
+  required check the ruleset takes only from `pull_request` runs report once a user with
+  write access approves those runs with **Approve workflows to run**.
 
 On both paths the calling job grants the permissions the release job requests, since a
 called workflow cannot raise the caller's token permissions. A caller with the release

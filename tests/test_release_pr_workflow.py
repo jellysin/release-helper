@@ -16,6 +16,7 @@ WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "rele
 RELEASE_AUTOMATION = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-automation.yml"
 STUB = Path(__file__).with_name("stub_gh.py")
 LABELS = "Mark merged release PRs whose tag names their merge commit"
+DISPATCH = "Explicitly dispatch release PR checks"
 MINT_STEP = "      - name: Mint the release token\n"
 PATH_STEP = "      - name: Name the release token path\n"
 MINT_ACTION = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
@@ -270,18 +271,23 @@ class ReleaseLabelTests(StepCase):
 class WorkflowShapeTests(unittest.TestCase):
     """Step order, tokens and secrets of the reusable release-please workflow."""
 
-    def test_labels_are_judged_before_release_please_runs_and_no_dispatch_step(self):
-        """Labels run before release-please, and no step dispatches the release PR checks."""
+    def test_labels_are_judged_before_release_please_runs_and_checks_are_dispatched_after(self):
+        """Labels run before release-please, and checks are explicitly dispatched after it."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         positions = [contents.index(f"      - name: {LABELS}\n"), contents.index(ACTION)]
+        dispatch_name = f"      - name: {DISPATCH}\n"
+        self.assertEqual(1, contents.count(dispatch_name))
+        dispatch_pos = contents.index(dispatch_name)
+        positions.append(dispatch_pos)
         self.assertEqual(sorted(positions), positions)
-        self.assertNotIn("Explicitly dispatch release PR checks", contents)
-        self.assertEqual(2, contents.count(START))
+        dispatch_lines = [line.strip() for line in contents[dispatch_pos:].splitlines()]
+        self.assertIn("if: env.RELEASE_APP_KEY_SET != 'true'", dispatch_lines)
+        self.assertEqual(3, contents.count(START))
         self.assertEqual(1, contents.count("skip-github-release: true"))
 
     def test_every_external_process_has_a_deadline(self):
-        """Every subprocess call in the label step carries a 60 second timeout."""
-        for step in (LABELS,):
+        """Every subprocess call in the label and dispatch steps carries a 60 second timeout."""
+        for step in (LABELS, DISPATCH):
             with self.subTest(step=step):
                 calls = [line for line in source(step).splitlines() if "subprocess.run(" in line]
                 self.assertTrue(calls)
@@ -336,7 +342,7 @@ class WorkflowShapeTests(unittest.TestCase):
         app_msg = "release token: GitHub App installation token (RELEASE_APP_PRIVATE_KEY set)"
         fallback_msg = (
             "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent);"
-            " release PR pull_request runs wait for Approve workflows to run"
+            " release PR checks run through an explicit ci.yml dispatch"
         )
         self.assertIn(app_msg, contents[path_step_pos:release_step_pos])
         self.assertIn(fallback_msg, contents[path_step_pos:release_step_pos])

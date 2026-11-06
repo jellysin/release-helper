@@ -35,15 +35,25 @@ def readme_caller_example():
     return yaml.safe_load("job:\n" + examples[0])["job"]
 
 
-def simulate_release_auth_choice(workflow_doc, app_key_present: bool):
-    """Simulate release auth resolution from workflow text for key present or absent."""
+def dispatched_workflows(node):
+    """Return the workflow files a step or step list runs with gh workflow run."""
+    return re.findall(r"'gh', 'workflow', 'run', '([^']+)'", yaml.safe_dump(node, width=10**6))
+
+
+def simulate_env_flag(workflow_doc, app_key_present: bool):
+    """Determine the RELEASE_APP_KEY_SET environment value for key present or absent."""
     job = next(iter(workflow_doc["jobs"].values()))
     job_environment = job.get("env", {})
     env_expression = job_environment.get("RELEASE_APP_KEY_SET", "")
-    env_flag = "unset"
     if "secrets.RELEASE_APP_PRIVATE_KEY != ''" in env_expression:
-        env_flag = "true" if app_key_present else "false"
+        return "true" if app_key_present else "false"
+    return "unset"
 
+
+def simulate_release_auth_choice(workflow_doc, app_key_present: bool):
+    """Simulate release auth resolution from workflow text for key present or absent."""
+    env_flag = simulate_env_flag(workflow_doc, app_key_present)
+    job = next(iter(workflow_doc["jobs"].values()))
     steps = job["steps"]
     mint_step = next(s for s in steps if s.get("uses", "").startswith(MINT))
     mint_condition = mint_step.get("if", "")
@@ -59,6 +69,18 @@ def simulate_release_auth_choice(workflow_doc, app_key_present: bool):
     if "steps.app-token.outputs.token" in auth_field:
         return mint_output if mint_output else ""
     return ""
+
+
+def simulate_release_pr_dispatch(workflow_doc, app_key_present: bool):
+    """Simulate release PR check dispatch evaluation for key present or absent."""
+    env_flag = simulate_env_flag(workflow_doc, app_key_present)
+    job = next(iter(workflow_doc["jobs"].values()))
+    ci_steps = [s for s in job["steps"] if "ci.yml" in dispatched_workflows(s)]
+    if not ci_steps:
+        return "skipped"
+    condition = ci_steps[0].get("if", "")
+    ran = condition == "env.RELEASE_APP_KEY_SET != 'true'" and env_flag != "true"
+    return "runs" if ran else "skipped"
 
 
 class ReleaseAppTokenChainTests(unittest.TestCase):
@@ -117,11 +139,15 @@ class ReleaseAppTokenChainTests(unittest.TestCase):
         self.assertEqual("App", simulate_release_auth_choice(self.called, app_key_present=True))
         self.assertEqual("GITHUB_TOKEN", simulate_release_auth_choice(self.called, app_key_present=False))
 
-    def test_no_step_dispatches_the_release_pr_checks_by_hand(self):
-        """The App token's pull_request events start CI; only prepare-release.yml is still dispatched."""
-        dispatched = re.findall(r"'gh', 'workflow', 'run', '([^']+)'", yaml.safe_dump(self.job["steps"], width=10**6))
-        self.assertEqual(["prepare-release.yml"], dispatched)
-        self.assertNotIn("steps.release.outputs.prs", yaml.safe_dump(self.job["steps"], width=10**6))
+    def test_fallback_dispatches_release_pr_checks_when_app_key_absent(self):
+        """Dispatched workflows are prepare-release and fallback release PR CI; fallback runs only without key."""
+        dispatched = dispatched_workflows(self.job["steps"])
+        self.assertEqual(sorted(dispatched), ["ci.yml", "prepare-release.yml"])
+        ci_steps = [s for s in self.job["steps"] if "ci.yml" in dispatched_workflows(s)]
+        self.assertEqual(1, len(ci_steps))
+        self.assertEqual("env.RELEASE_APP_KEY_SET != 'true'", ci_steps[0].get("if"))
+        self.assertEqual("skipped", simulate_release_pr_dispatch(self.called, app_key_present=True))
+        self.assertEqual("runs", simulate_release_pr_dispatch(self.called, app_key_present=False))
 
 
 if __name__ == "__main__":
