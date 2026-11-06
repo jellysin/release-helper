@@ -267,7 +267,10 @@ class ReleaseLabelTests(StepCase):
 
 
 class WorkflowShapeTests(unittest.TestCase):
+    """Step order, tokens and secrets of the reusable release-please workflow."""
+
     def test_labels_are_judged_before_release_please_runs_and_no_dispatch_step(self):
+        """Labels run before release-please, and no step dispatches the release PR checks."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         positions = [contents.index(f"      - name: {LABELS}\n"), contents.index(ACTION)]
         self.assertEqual(sorted(positions), positions)
@@ -276,6 +279,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertEqual(1, contents.count("skip-github-release: true"))
 
     def test_every_external_process_has_a_deadline(self):
+        """Every subprocess call in the label step carries a 60 second timeout."""
         for step in (LABELS,):
             with self.subTest(step=step):
                 calls = [line for line in source(step).splitlines() if "subprocess.run(" in line]
@@ -284,6 +288,7 @@ class WorkflowShapeTests(unittest.TestCase):
                     self.assertIn("timeout=60)", call)
 
     def test_workflow_call_declares_release_app_private_key_required_secret(self):
+        """The reusable workflow requires the release App private key from its caller."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         workflow_call = contents.split("workflow_call:\n", 1)[1].split("permissions:\n", 1)[0]
         self.assertIn("secrets:\n", workflow_call)
@@ -293,6 +298,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn("required: true", key_lines)
 
     def test_app_token_step_precedes_release_please_with_pinned_action_and_required_parameters(self):
+        """One unconditional, pinned mint step precedes release-please and requests only the granted permissions."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         token_step_pos = contents.index(MINT_STEP)
         release_step_pos = contents.index(ACTION)
@@ -315,6 +321,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertFalse(any(line.startswith("repositories:") for line in step_lines))
 
     def test_release_please_uses_app_token_and_never_receives_github_token(self):
+        """release-please takes the minted token and never the workflow token."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         release_section = contents[contents.index(ACTION) :]
         release_lines = [line.strip() for line in release_section.splitlines() if line.strip()]
@@ -323,6 +330,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertNotIn("secrets.GITHUB_TOKEN", release_section)
 
     def test_release_automation_passes_release_app_private_key_secret(self):
+        """The repository caller passes the release App private key by name."""
         contents = RELEASE_AUTOMATION.read_text(encoding="utf-8")
         self.assertIn("secrets:\n", contents)
         secrets_block = contents.split("secrets:\n", 1)[1]
