@@ -133,7 +133,7 @@ jobs:
           if [ "$RELEASE_APP_KEY_SET" = "true" ]; then
             echo "release token: GitHub App installation token (RELEASE_APP_PRIVATE_KEY set)"
           else
-            echo "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent); release PR pull_request runs wait for Approve workflows to run"
+            echo "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent); release PR checks run through an explicit ci.yml dispatch"
           fi
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -141,3 +141,23 @@ jobs:
           token: ${{ steps.app-token.outputs.token || github.token }}
           target-branch: main
           skip-github-release: true
+      - name: Explicitly dispatch release PR checks
+        if: env.RELEASE_APP_KEY_SET != 'true'
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs || '[]' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          prs = json.loads(os.environ['RELEASE_PRS'])
+          if not isinstance(prs, list) or len(prs) > 20:
+              raise SystemExit('Unexpected release PR output')
+          for pr in prs:
+              branch = pr['headBranchName']
+              if not branch.startswith('release-please--branches--main') or pr['baseBranchName'] != 'main':
+                  raise SystemExit('Unexpected release PR branch')
+              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', os.environ['GITHUB_REPOSITORY'], '--ref', branch], check=True, timeout=60)
+          PY
