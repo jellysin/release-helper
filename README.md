@@ -117,7 +117,7 @@ is a required `workflow_call` secret; a caller passes it explicitly:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 ```
 
-The workflow tests are in `tests/test_release_pr_workflow.py`. It exposes no publication inputs or tag output and never dispatches a publication
+The workflow exposes no publication inputs or tag output and never dispatches a publication
 workflow.
 
 Its programs run on the interpreter `.python-version` names, not on the one the runner image
