@@ -309,6 +309,7 @@ def release_tag_commit(root, version, inc_v):
 
 
 def verify_last_release_sha(root, last_sha, release_commit, version):
+    """Fail unless last_sha is the release commit or a descendant of it."""
     try:
         last_commit = command(["git", "rev-parse", "--verify", f"{last_sha}^{{commit}}"], cwd=str(root))
     except ValidationError as exc:
@@ -329,6 +330,7 @@ def verify_last_release_sha(root, last_sha, release_commit, version):
 
 
 def stale_last_release_sha(root, config, manifest):
+    """Fail when last-release-sha predates the release tag of the manifest version."""
     if "last-release-sha" not in config:
         return
     require(

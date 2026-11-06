@@ -230,6 +230,28 @@ class StaleLastReleaseShaTests(Workspace):
         manifest = {".": "1.0.1"}
         releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
 
+    def test_release_pr_head_lightweight_parent_tag_passes(self):
+        """A lightweight previous tag resolves to its commit like an annotated one."""
+        repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
+        command(["git", "tag", "v1.0.0", parent_commit], cwd=str(repo_dir))
+        config = {"last-release-sha": parent_commit}
+        releaseconfig.stale_last_release_sha(repo_dir, config, {".": "1.0.1"})
+
+    def test_release_pr_head_without_v_prefix_uses_unprefixed_parent_tag(self):
+        """include-v-in-tag false looks up the previous tag without the v prefix."""
+        repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
+        command(["git", "tag", "-a", "1.0.0", "-m", "1.0.0", parent_commit], cwd=str(repo_dir))
+        config = {"last-release-sha": parent_commit, "include-v-in-tag": False}
+        releaseconfig.stale_last_release_sha(repo_dir, config, {".": "1.0.1"})
+
+    def test_release_pr_head_without_v_prefix_ignores_a_v_prefixed_parent_tag(self):
+        """With include-v-in-tag false a v1.0.0 tag is not the previous release tag."""
+        repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
+        command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", parent_commit], cwd=str(repo_dir))
+        config = {"last-release-sha": parent_commit, "include-v-in-tag": False}
+        with self.assertRaisesRegex(ValidationError, r"Release tag '1\.0\.1' is absent"):
+            releaseconfig.stale_last_release_sha(repo_dir, config, {".": "1.0.1"})
+
     def test_release_pr_head_older_than_release_fails(self):
         repo_dir, parent_commit, _head_commit, ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
         command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", parent_commit], cwd=str(repo_dir))
