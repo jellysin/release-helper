@@ -109,7 +109,9 @@ GitHub drafts or published releases. Merging a release PR updates files only.
 It opens release PRs with an installation token of the release GitHub App, minted by
 `actions/create-github-app-token` from the variable `RELEASE_APP_CLIENT_ID` and the secret
 `RELEASE_APP_PRIVATE_KEY`, so their `pull_request` events start the caller's CI. The secret
-is a required `workflow_call` secret; a caller passes it explicitly:
+is an optional `workflow_call` secret; without it, release-please uses `GITHUB_TOKEN` and its
+release PRs do not start the caller's `pull_request` CI; with it, release-please uses the
+minted GitHub App installation token. A caller passes it explicitly:
 
 ```yaml
     uses: jellysin/release-helper/.github/workflows/release-please.yml@<sha> # v1.7.0

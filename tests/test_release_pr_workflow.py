@@ -17,6 +17,7 @@ RELEASE_AUTOMATION = Path(__file__).resolve().parents[1] / ".github" / "workflow
 STUB = Path(__file__).with_name("stub_gh.py")
 LABELS = "Mark merged release PRs whose tag names their merge commit"
 MINT_STEP = "      - name: Mint the release token\n"
+PATH_STEP = "      - name: Name the release token path\n"
 MINT_ACTION = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
 INTERPRETER = "Refuse an interpreter other than the pinned one"
 CHECKOUT = "      - uses: actions/checkout@"
@@ -287,46 +288,66 @@ class WorkflowShapeTests(unittest.TestCase):
                 for call in calls:
                     self.assertIn("timeout=60)", call)
 
-    def test_workflow_call_declares_release_app_private_key_required_secret(self):
-        """The reusable workflow requires the release App private key from its caller."""
+    def test_workflow_call_declares_release_app_private_key_optional_secret(self):
+        """The reusable workflow declares the release App private key as optional."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         workflow_call = contents.split("workflow_call:\n", 1)[1].split("permissions:\n", 1)[0]
         self.assertIn("secrets:\n", workflow_call)
         secrets_block = workflow_call.split("secrets:\n", 1)[1]
         self.assertIn("RELEASE_APP_PRIVATE_KEY:\n", secrets_block)
         key_lines = [line.strip() for line in secrets_block.split("RELEASE_APP_PRIVATE_KEY:\n", 1)[1].splitlines()]
-        self.assertIn("required: true", key_lines)
+        self.assertIn("required: false", key_lines)
 
     def test_app_token_step_precedes_release_please_with_pinned_action_and_required_parameters(self):
-        """One unconditional, pinned mint step precedes release-please and requests only the granted permissions."""
+        """One conditional, pinned mint step precedes release-please and requests only the granted permissions."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         token_step_pos = contents.index(MINT_STEP)
+        path_step_pos = contents.index(PATH_STEP)
         release_step_pos = contents.index(ACTION)
-        self.assertLess(token_step_pos, release_step_pos)
+        self.assertLess(token_step_pos, path_step_pos)
+        self.assertLess(path_step_pos, release_step_pos)
 
         job_section = contents.split("  release:\n", 1)[1]
         self.assertIn(MINT_STEP, job_section)
         self.assertIn(ACTION, job_section)
 
-        step_lines = [line.strip() for line in contents[token_step_pos:release_step_pos].splitlines()]
+        step_lines = [line.strip() for line in contents[token_step_pos:path_step_pos].splitlines()]
         self.assertIn(f"uses: {MINT_ACTION}", step_lines)
         self.assertIn("id: app-token", step_lines)
+        self.assertIn("if: env.RELEASE_APP_KEY_SET == 'true'", step_lines)
         self.assertIn("client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}", step_lines)
         self.assertIn("private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}", step_lines)
         requested = sorted(line for line in step_lines if line.startswith("permission-"))
         self.assertEqual(["permission-contents: write", "permission-pull-requests: write"], requested)
-        self.assertFalse(any(line.startswith("if:") for line in step_lines))
         self.assertFalse(any(line.startswith("continue-on-error:") for line in step_lines))
         self.assertFalse(any(line.startswith("owner:") for line in step_lines))
         self.assertFalse(any(line.startswith("repositories:") for line in step_lines))
 
-    def test_release_please_uses_app_token_and_never_receives_github_token(self):
-        """release-please takes the minted token and never the workflow token."""
+    def test_path_step_announces_token_source_before_release_please(self):
+        """A bounded shell step announces whether the App token or fallback is used."""
+        contents = WORKFLOW.read_text(encoding="utf-8")
+        token_step_pos = contents.index(MINT_STEP)
+        path_step_pos = contents.index(PATH_STEP)
+        release_step_pos = contents.index(ACTION)
+        self.assertLess(token_step_pos, path_step_pos)
+        self.assertLess(path_step_pos, release_step_pos)
+
+        path_lines = [line.strip() for line in contents[path_step_pos:release_step_pos].splitlines()]
+        self.assertIn("timeout-minutes: 1", path_lines)
+        app_msg = "release token: GitHub App installation token (RELEASE_APP_PRIVATE_KEY set)"
+        fallback_msg = (
+            "release token: GITHUB_TOKEN fallback (RELEASE_APP_PRIVATE_KEY absent);"
+            " release PR events do not start pull_request CI"
+        )
+        self.assertIn(app_msg, contents[path_step_pos:release_step_pos])
+        self.assertIn(fallback_msg, contents[path_step_pos:release_step_pos])
+
+    def test_release_please_uses_app_token_and_falls_back_to_github_token(self):
+        """release-please takes the minted token or falls back to github.token."""
         contents = WORKFLOW.read_text(encoding="utf-8")
         release_section = contents[contents.index(ACTION) :]
         release_lines = [line.strip() for line in release_section.splitlines() if line.strip()]
-        self.assertIn("token: ${{ steps.app-token.outputs.token }}", release_lines)
-        self.assertNotIn("github.token", release_section)
+        self.assertIn("token: ${{ steps.app-token.outputs.token || github.token }}", release_lines)
         self.assertNotIn("secrets.GITHUB_TOKEN", release_section)
 
     def test_release_automation_passes_release_app_private_key_secret(self):
