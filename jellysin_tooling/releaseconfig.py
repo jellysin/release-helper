@@ -267,9 +267,18 @@ def tag_commit(root, tag):
 
 
 def parent_manifest_version(root):
-    """Return the manifest version at HEAD's first parent, or None without a readable one."""
+    """Return the manifest version before the last first-parent commit that changed it, or None.
+
+    That commit is the release-please bump on a release PR head, on its merge ref, and on the
+    merged commit, even when later commits follow the bump on the release branch.
+    """
     try:
-        raw = command(["git", "show", "HEAD^1:.release-please-manifest.json"], cwd=str(root))
+        bump = command(
+            ["git", "rev-list", "--first-parent", "-n", "1", "HEAD", "--", ".release-please-manifest.json"],
+            cwd=str(root),
+        )
+        require(bump != "", "Manifest was never committed")
+        raw = command(["git", "show", f"{bump}^1:.release-please-manifest.json"], cwd=str(root))
         data = decode_json(raw.encode("utf-8"))
         require(isinstance(data, dict) and list(data.keys()) == ["."], "Invalid parent manifest shape")
         return semver(data["."])

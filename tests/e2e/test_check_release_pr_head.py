@@ -7,6 +7,7 @@ from pathlib import Path
 
 from jellysin_tooling.github import command
 from tests.fixtures import Workspace
+from tests.test_release_config import init_git_repo
 
 TOOL = Path(__file__).resolve().parents[2] / "tools.py"
 WORKFLOW = (
@@ -38,11 +39,7 @@ class CheckReleasePrHeadTests(Workspace):
         super().setUp()
         self.repo = self.root / "consumer"
         (self.repo / ".github" / "workflows").mkdir(parents=True)
-        self.git("init", "-q", "-b", "main")
-        for key, value in (("user.name", "Test User"), ("user.email", "test@example.com")):
-            self.git("config", key, value)
-        for key in ("tag.gpgSign", "commit.gpgSign"):
-            self.git("config", key, "false")
+        init_git_repo(self.repo)
         for name in ("LICENSE", "README.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md"):
             (self.repo / name).write_text("Doc\n", encoding="utf-8")
         (self.repo / "renovate.json").write_text("{}", encoding="utf-8")
@@ -74,6 +71,22 @@ class CheckReleasePrHeadTests(Workspace):
         result = self.check_policy()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("", self.git("tag", "--list", "v1.1.0"))
+
+    def test_commit_after_the_bump_on_the_release_branch_still_compares_with_previous_tag(self):
+        """A later commit on the release branch keeps 1.1.0; the bump commit's parent holds 1.0.0."""
+        self.git("tag", "-a", "v1.0.0", "-m", "v1.0.0", self.release)
+        (self.repo / "NOTES.md").write_text("Release notes edit\n", encoding="utf-8")
+        self.commit("docs: edit release notes on the release branch")
+        result = self.check_policy()
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_merge_ref_of_the_release_pr_compares_with_previous_tag(self):
+        """pull_request checks run on the merge ref, whose first parent is main."""
+        self.git("tag", "-a", "v1.0.0", "-m", "v1.0.0", self.release)
+        self.git("checkout", "-q", "main")
+        self.git("merge", "-q", "--no-ff", "-m", "Merge release PR", "release-please--branches--main")
+        result = self.check_policy()
+        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_release_pr_head_with_stale_sha_still_fails(self):
         """The 1.0.0 tag sits on a later commit, so the pinned sha is older than the release."""

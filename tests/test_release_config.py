@@ -10,6 +10,19 @@ from tests.fixtures import Workspace
 from tests.test_tool_name import ROOT, message
 
 
+def init_git_repo(repo_dir):
+    """Create an unsigned main-branch repository with a fixed test identity."""
+    command(["git", "init", "-q", "-b", "main"], cwd=str(repo_dir))
+    settings = {
+        "user.name": "Test User",
+        "user.email": "test@example.com",
+        "tag.gpgSign": "false",
+        "commit.gpgSign": "false",
+    }
+    for key, value in settings.items():
+        command(["git", "config", key, value], cwd=str(repo_dir))
+
+
 class ReleaseConfigSchemaTests(Workspace):
     def test_repo_own_config_passes_validation(self):
         config = read_json(ROOT / "release-please-config.json")
@@ -120,11 +133,7 @@ class StaleLastReleaseShaTests(Workspace):
     def make_git_repo(self, tagging=True):
         repo_dir = self.root / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        command(["git", "init", "-b", "main"], cwd=str(repo_dir))
-        command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
-        command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
-        command(["git", "config", "tag.gpgSign", "false"], cwd=str(repo_dir))
-        command(["git", "config", "commit.gpgSign", "false"], cwd=str(repo_dir))
+        init_git_repo(repo_dir)
 
         file1 = repo_dir / "file.txt"
         file1.write_text("initial\n", encoding="utf-8")
@@ -252,11 +261,7 @@ class StaleLastReleaseShaTests(Workspace):
     def test_single_commit_repo_tag_absent_fails_closed(self):
         repo_dir = self.root / "single-commit-repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        command(["git", "init", "-b", "main"], cwd=str(repo_dir))
-        command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
-        command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
-        command(["git", "config", "tag.gpgSign", "false"], cwd=str(repo_dir))
-        command(["git", "config", "commit.gpgSign", "false"], cwd=str(repo_dir))
+        init_git_repo(repo_dir)
         wf = repo_dir / ".github" / "workflows" / "prepare-release.yml"
         wf.parent.mkdir(parents=True, exist_ok=True)
         wf.write_text(
@@ -418,11 +423,7 @@ class CheckPolicyCliEndToEndTests(Workspace):
     def prepare_compliant_repo(self):
         repo_dir = self.root / "compliant-repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        command(["git", "init", "-b", "main"], cwd=str(repo_dir))
-        command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
-        command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
-        command(["git", "config", "tag.gpgSign", "false"], cwd=str(repo_dir))
-        command(["git", "config", "commit.gpgSign", "false"], cwd=str(repo_dir))
+        init_git_repo(repo_dir)
 
         for name in ("LICENSE", "README.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md", "renovate.json"):
             (repo_dir / name).write_text("{}" if name.endswith("json") else "Doc\n", encoding="utf-8")
