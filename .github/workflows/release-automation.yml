@@ -18,3 +18,5 @@ jobs:
     uses: ./.github/workflows/release-please.yml
     with:
       prepare-release: true
+    secrets:
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}

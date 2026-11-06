@@ -5,6 +5,10 @@ on:
       prepare-release:
         type: boolean
         default: false
+    secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        required: true
+        description: Private key of the GitHub App used to open release pull requests
 permissions:
   contents: read
 jobs:
@@ -111,27 +115,18 @@ jobs:
               else:
                   print(f'#{number}: label stays, no version tag names its merge commit')
           PY
+      - name: Mint the release token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Exactly the installation's grant: release branches and release PRs.
+          permission-contents: write
+          permission-pull-requests: write
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          token: ${{ github.token }}
+          token: ${{ steps.app-token.outputs.token }}
           target-branch: main
           skip-github-release: true
-      - name: Explicitly dispatch release PR checks
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_PRS: ${{ steps.release.outputs.prs || '[]' }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
-          prs = json.loads(os.environ['RELEASE_PRS'])
-          if not isinstance(prs, list) or len(prs) > 20:
-              raise SystemExit('Unexpected release PR output')
-          for pr in prs:
-              branch = pr['headBranchName']
-              if not branch.startswith('release-please--branches--main') or pr['baseBranchName'] != 'main':
-                  raise SystemExit('Unexpected release PR branch')
-              subprocess.run(['gh', 'workflow', 'run', 'ci.yml', '--repo', os.environ['GITHUB_REPOSITORY'], '--ref', branch], check=True, timeout=60)
-          PY
