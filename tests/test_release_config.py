@@ -130,7 +130,10 @@ class ReleaseConfigSchemaTests(Workspace):
 
 
 class StaleLastReleaseShaTests(Workspace):
+    """last-release-sha must name the commit the current or previous version tag names."""
+
     def make_git_repo(self, tagging=True):
+        """Create a two-commit repository; with tagging, a workflow uses actions/prepare, so tags are expected."""
         repo_dir = self.root / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
         init_git_repo(repo_dir)
@@ -156,6 +159,7 @@ class StaleLastReleaseShaTests(Workspace):
         return repo_dir, commit1, commit2
 
     def make_manifest_repo(self, parent_version="1.0.0", head_version="1.0.1"):
+        """Commit a manifest at parent_version, then bump it to head_version as a release PR head would."""
         repo_dir, commit1, _commit2 = self.make_git_repo()
         manifest_file = repo_dir / ".release-please-manifest.json"
         manifest_file.write_text(f'{{\n  ".": "{parent_version}"\n}}\n', encoding="utf-8")
@@ -224,6 +228,7 @@ class StaleLastReleaseShaTests(Workspace):
             releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
 
     def test_planted_green_release_pr_head_absent_tag_passes_with_parent_tag(self):
+        """A release PR head whose new tag is not cut passes when the previous tag names last-release-sha."""
         repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
         command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", parent_commit], cwd=str(repo_dir))
         config = {"last-release-sha": parent_commit}
@@ -253,6 +258,7 @@ class StaleLastReleaseShaTests(Workspace):
             releaseconfig.stale_last_release_sha(repo_dir, config, {".": "1.0.1"})
 
     def test_release_pr_head_older_than_release_fails(self):
+        """A release PR head with last-release-sha older than the previous tag fails."""
         repo_dir, parent_commit, _head_commit, ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
         command(["git", "tag", "-a", "v1.0.0", "-m", "v1.0.0", parent_commit], cwd=str(repo_dir))
         config = {"last-release-sha": ancestor}
@@ -261,6 +267,7 @@ class StaleLastReleaseShaTests(Workspace):
             releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
 
     def test_release_pr_head_unchanged_version_tag_absent_fails_closed(self):
+        """Without a version bump, an absent current tag has no fallback and fails."""
         repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.0")
         config = {"last-release-sha": parent_commit}
         manifest = {".": "1.0.0"}
@@ -271,6 +278,7 @@ class StaleLastReleaseShaTests(Workspace):
             releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
 
     def test_release_pr_head_previous_tag_absent_fails_closed(self):
+        """A release PR head fails when neither the new nor the previous version tag exists."""
         repo_dir, parent_commit, _head_commit, _ancestor = self.make_manifest_repo("1.0.0", "1.0.1")
         config = {"last-release-sha": parent_commit}
         manifest = {".": "1.0.1"}
@@ -281,6 +289,7 @@ class StaleLastReleaseShaTests(Workspace):
             releaseconfig.stale_last_release_sha(repo_dir, config, manifest)
 
     def test_single_commit_repo_tag_absent_fails_closed(self):
+        """A repository with one commit has no parent manifest, so an absent tag fails."""
         repo_dir = self.root / "single-commit-repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
         init_git_repo(repo_dir)
@@ -442,7 +451,10 @@ class StaleLastReleaseShaTests(Workspace):
 
 
 class CheckPolicyCliEndToEndTests(Workspace):
+    """The check-policy command line run against a compliant repository."""
+
     def prepare_compliant_repo(self):
+        """Create a repository that satisfies every policy check."""
         repo_dir = self.root / "compliant-repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
         init_git_repo(repo_dir)
