@@ -1,5 +1,6 @@
 """Tests verifying required status checks against workflow reported checks."""
 
+import copy
 import itertools
 import json
 import re
@@ -12,6 +13,61 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 RULESET_PATH = ROOT / ".github" / "rulesets" / "main.json"
+DRAFT_STOP_STEP_TEXT = (
+    "      - name: Stop on a draft pull request\n"
+    "        if: github.event.pull_request.draft == true\n"
+    "        shell: bash\n"
+    "        env:\n"
+    "          TITLE: Gate not run on a draft\n"
+    "          MESSAGE: >-\n"
+    "            The gate did not run because the pull request is a draft.\n"
+    "            It runs when the pull request is marked ready for review.\n"
+    "        run: |\n"
+    '          echo "::error title=$TITLE::$MESSAGE"\n'
+    '          echo "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\n'
+    "          exit 1\n"
+)
+DRAFT_STOP_RUN = 'echo "::error title=$TITLE::$MESSAGE"\necho "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\nexit 1\n'
+DRAFT_STOP_JOBS_CI = ("checks", "secrets", "trivy", "semgrep", "governance")
+DRAFT_STOP_JOBS_CODEQL = ("analyze",)
+
+
+def _is_valid_draft_stop_env(env: object) -> bool:
+    """Return True if env has exactly TITLE and MESSAGE keys with expected values."""
+    if not isinstance(env, dict) or set(env.keys()) != {"TITLE", "MESSAGE"}:
+        return False
+    expected_msg = (
+        "The gate did not run because the pull request is a draft. "
+        "It runs when the pull request is marked ready for review."
+    )
+    return env.get("TITLE") == "Gate not run on a draft" and env.get("MESSAGE") == expected_msg
+
+
+def is_draft_stop_step(step: object) -> bool:
+    """Return True if step matches the required draft stop step specification."""
+    if not isinstance(step, dict):
+        return False
+    if "continue-on-error" in step or "uses" in step:
+        return False
+    if step.get("name") != "Stop on a draft pull request":
+        return False
+    if step.get("if") != "github.event.pull_request.draft == true":
+        return False
+    if step.get("shell") != "bash":
+        return False
+    if step.get("run") != DRAFT_STOP_RUN:
+        return False
+    return _is_valid_draft_stop_env(step.get("env"))
+
+
+def job_has_draft_stop(job: object) -> bool:
+    """Return True if the job's first step is the exact draft PR stop step."""
+    if not isinstance(job, dict):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return False
+    return is_draft_stop_step(steps[0])
 
 
 def _is_pr_workflow(data: object) -> bool:
@@ -224,3 +280,111 @@ class RequiredChecksTests(unittest.TestCase):
             self.assertNotIn("analyze (actions)", reported)
             self.assertIn("analyze (actions)", required)
             self.assertFalse(required.issubset(reported))
+
+    def test_pr_jobs_begin_with_exact_draft_stop_step(self):
+        """Ensure all 6 pull_request jobs begin with the exact draft stop step and raw text matches."""
+        ci_text = (WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8")
+        codeql_text = (WORKFLOW_DIR / "codeql.yml").read_text(encoding="utf-8")
+        self.assertEqual(ci_text.count(DRAFT_STOP_STEP_TEXT), len(DRAFT_STOP_JOBS_CI))
+        self.assertEqual(codeql_text.count(DRAFT_STOP_STEP_TEXT), len(DRAFT_STOP_JOBS_CODEQL))
+
+        ci_data = yaml.safe_load(ci_text)
+        for job_id in DRAFT_STOP_JOBS_CI:
+            with self.subTest(workflow="ci.yml", job=job_id):
+                job = ci_data.get("jobs", {}).get(job_id)
+                self.assertTrue(job_has_draft_stop(job))
+
+        codeql_data = yaml.safe_load(codeql_text)
+        for job_id in DRAFT_STOP_JOBS_CODEQL:
+            with self.subTest(workflow="codeql.yml", job=job_id):
+                job = codeql_data.get("jobs", {}).get(job_id)
+                self.assertTrue(job_has_draft_stop(job))
+
+    def test_pr_triggers_include_draft_transitions(self):
+        """Ensure both ci.yml and codeql.yml pull_request triggers list draft transition types."""
+        ci_data = yaml.safe_load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"))
+        ci_triggers = ci_data.get("on") or ci_data.get(True) or {}
+        ci_pr_types = ci_triggers.get("pull_request", {}).get("types", [])
+        expected_ci_types = [
+            "opened",
+            "synchronize",
+            "reopened",
+            "labeled",
+            "unlabeled",
+            "ready_for_review",
+            "converted_to_draft",
+        ]
+        self.assertEqual(ci_pr_types, expected_ci_types)
+
+        codeql_data = yaml.safe_load((WORKFLOW_DIR / "codeql.yml").read_text(encoding="utf-8"))
+        codeql_triggers = codeql_data.get("on") or codeql_data.get(True) or {}
+        codeql_pr_types = codeql_triggers.get("pull_request", {}).get("types", [])
+        expected_codeql_types = ["opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft"]
+        self.assertEqual(codeql_pr_types, expected_codeql_types)
+
+    def test_planted_proof_job_copy_without_draft_step_detected(self):
+        """Ensure a job copy with the draft stop step removed is detected as missing by helper."""
+        ci_data = yaml.safe_load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"))
+        for job_id in DRAFT_STOP_JOBS_CI:
+            with self.subTest(workflow="ci.yml", job=job_id):
+                job = ci_data["jobs"][job_id]
+                job_copy = copy.deepcopy(job)
+                self.assertTrue(job_has_draft_stop(job_copy))
+                job_copy["steps"].pop(0)
+                self.assertFalse(job_has_draft_stop(job_copy))
+
+        codeql_data = yaml.safe_load((WORKFLOW_DIR / "codeql.yml").read_text(encoding="utf-8"))
+        codeql_job = codeql_data["jobs"]["analyze"]
+        codeql_copy = copy.deepcopy(codeql_job)
+        self.assertTrue(job_has_draft_stop(codeql_copy))
+        codeql_copy["steps"].pop(0)
+        self.assertFalse(job_has_draft_stop(codeql_copy))
+
+    def test_draft_stop_step_boundary_conditions(self):
+        """Ensure boundary variations on step if condition, run script, env, and flags fail validation."""
+        valid_step = {
+            "name": "Stop on a draft pull request",
+            "if": "github.event.pull_request.draft == true",
+            "shell": "bash",
+            "env": {
+                "TITLE": "Gate not run on a draft",
+                "MESSAGE": (
+                    "The gate did not run because the pull request is a draft. "
+                    "It runs when the pull request is marked ready for review."
+                ),
+            },
+            "run": DRAFT_STOP_RUN,
+        }
+        self.assertTrue(is_draft_stop_step(valid_step))
+
+        for bad_if in (
+            "github.event.pull_request.draft",
+            "github.event.pull_request.draft == 'true'",
+            "true",
+            "github.event.pull_request.draft != false",
+        ):
+            step = copy.deepcopy(valid_step)
+            step["if"] = bad_if
+            self.assertFalse(is_draft_stop_step(step))
+
+        for bad_run in (
+            'echo "$MESSAGE"\nexit 0\n',
+            'echo "$MESSAGE"\nexit 2\n',
+            'echo "done"\n',
+            'echo "::error title=$TITLE::$MESSAGE"\necho "$MESSAGE" >> "$GITHUB_STEP_SUMMARY"\necho "extra"\nexit 1\n',
+        ):
+            step = copy.deepcopy(valid_step)
+            step["run"] = bad_run
+            self.assertFalse(is_draft_stop_step(step))
+
+        extra_env_step = copy.deepcopy(valid_step)
+        extra_env_step["env"]["EXTRA"] = "unexpected"
+        self.assertFalse(is_draft_stop_step(extra_env_step))
+
+        continue_on_error_step = copy.deepcopy(valid_step)
+        continue_on_error_step["continue-on-error"] = True
+        self.assertFalse(is_draft_stop_step(continue_on_error_step))
+
+        uses_step = copy.deepcopy(valid_step)
+        uses_step["uses"] = "actions/checkout@v4"
+        self.assertFalse(is_draft_stop_step(uses_step))
