@@ -12,7 +12,6 @@ from urllib.parse import quote
 from . import source, spdx
 from .catalog import release_assets, validate_archive, validate_release
 from .common import (
-    MAX_ASSET,
     MAX_BUNDLE,
     MAX_FILES,
     SHA,
@@ -21,6 +20,7 @@ from .common import (
     decode_json,
     digest,
     read_json,
+    read_release_files,
     repository,
     require,
     semver,
@@ -131,16 +131,7 @@ def publication_context(repo, tag, commit, verified_tag_recovery):
 
 
 def local_artifacts(directory, release):
-    root = Path(directory).resolve(strict=True)
-    names = {release["archive"]["name"], "release.json", "sbom.spdx.json", "checksums.txt"}
-    files = {}
-    for name in names:
-        path = root / name
-        require(
-            path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_ASSET,
-            "Missing or unsafe release artifact",
-        )
-        files[name] = path.read_bytes()
+    files = read_release_files(directory, release)
     members = validate_archive(files[release["archive"]["name"]], release)
     spdx.validate(decode_json(files["sbom.spdx.json"]), release, members)
     checksums = "".join(

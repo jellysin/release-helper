@@ -191,3 +191,18 @@ def metadata(value):
         require(not name.lower().startswith(HOST_PREFIXES), "Host-provided files must not be packaged")
     require(len({name.casefold() for name in names}) == len(names), "Duplicate package filename")
     return value
+
+
+def read_release_files(directory, release):
+    """Read and safety-check the four expected release artifacts from *directory*."""
+    root = Path(directory).resolve(strict=True)
+    names = {release["archive"]["name"], "release.json", "sbom.spdx.json", "checksums.txt"}
+    files = {}
+    for name in names:
+        path = root / name
+        require(
+            path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_ASSET,
+            "Missing or unsafe release artifact",
+        )
+        files[name] = path.read_bytes()
+    return files
