@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "github>plurano/horistes",
+    "github>plurano/horistes#2368b588cf97621b275ae7fd4eb10d720dc64688",
     "helpers:pinGitHubActionDigests"
   ],
   "dependencyDashboard": true,

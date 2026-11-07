@@ -5,7 +5,6 @@ import subprocess  # nosec B404
 import sys
 import tarfile
 from pathlib import Path
-from unittest.mock import patch
 
 from jellysin_tooling import source
 from jellysin_tooling.common import ValidationError, decode_json, repository, require, semver
@@ -82,7 +81,7 @@ class SourcePackageValidationTests(SourcePackageFixture):
                     self.assert_archive_members(archive)
 
     def test_unsafe_package_inputs_refused_before_process(self):
-        """Refuse unsafe or unexpected repository and tag values before launching a process."""
+        """Refuse unsafe or unexpected repository and tag values through the production CLI."""
         for repo, tag in (
             ("jellysin/.github --help", "v1.0.0"),
             ("jellysin/.github\n", "v1.0.0"),
@@ -92,11 +91,27 @@ class SourcePackageValidationTests(SourcePackageFixture):
             ("jellysin/.github", "1.0.0"),
             ("jellysin/.github", "v2.0.0"),
         ):
-            with self.subTest(repo=repo, tag=tag), patch("subprocess.run") as run:
-                self.tag = tag
-                with self.assertRaises(ValidationError):
-                    self.package_source(repo)
-                run.assert_not_called()
+            with self.subTest(repo=repo, tag=tag):
+                result = subprocess.run(  # nosec B603  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+                    [
+                        sys.executable,
+                        str(TOOL),
+                        "package-source",
+                        "--repo",
+                        repo,
+                        "--tag",
+                        tag,
+                        "--output-directory",
+                        str(self.output),
+                    ],
+                    cwd=self.repo_dir,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=30,
+                )
+                self.assertNotEqual(0, result.returncode, f"Expected rejection for repo={repo!r} tag={tag!r}")
+                self.assertFalse(self.output.exists(), f"No output for rejected input repo={repo!r} tag={tag!r}")
 
 
 class SourceDotRepositoryTests(SourcePackageFixture):
