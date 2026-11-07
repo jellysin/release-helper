@@ -15,6 +15,7 @@ from .common import (
     digest,
     filename,
     json_bytes,
+    read_release_files,
     repository,
     require,
     semver,
@@ -167,15 +168,6 @@ def validate_local(files, release, cwd=None):
 
 
 def local_artifacts(directory, release, cwd=None):
-    root = Path(directory).resolve(strict=True)
-    names = {release["archive"]["name"], "release.json", "sbom.spdx.json", "checksums.txt"}
-    files = {}
-    for name in names:
-        path = root / name
-        require(
-            path.is_file() and not path.is_symlink() and path.stat().st_size <= MAX_ASSET,
-            "Missing or unsafe release artifact",
-        )
-        files[name] = path.read_bytes()
+    files = read_release_files(directory, release)
     validate_local(files, release, cwd=cwd)
     return files
