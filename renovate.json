@@ -21,6 +21,21 @@
         "SERVER_IMAGE = \"(?<depName>jellyfin/jellyfin):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "currentValueTemplate": "HEAD",
+      "customType": "regex",
+      "datasourceTemplate": "git-refs",
+      "depNameTemplate": "praetor-workflow-engine-pin",
+      "description": "praetor workflow engine commit pin: track the engine default branch",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "(?m)^[\\t ]*(PRAETOR_COMMIT)[\\t ]*[:=][\\t ]*[\"']?(?<currentDigest>[0-9a-f]{40})[\"']?[\\t ]*(#[^\\r\\n]*)?\\r?$",
+        "(?m)^[\\t ]*(PRAETOR_REF)[\\t ]*[:=][\\t ]*[\"']?(?<currentDigest>[0-9a-fA-F]{7,40})[\"']?[\\t ]*(#[^\\r\\n]*)?\\r?$"
+      ],
+      "packageNameTemplate": "https://github.com/cordanaLLM/praetor"
     }
   ],
   "packageRules": [
