@@ -6,6 +6,8 @@
 
   <img src="docs/assets/release-helper-readme-banner.svg" alt="JellySin Release Helper — shared build and release tools for independent Jellyfin 12 plugins" height="120" />
 
+  <h1>JellySin Release Helper</h1>
+
   <!-- badge block: groups in the fleet README standard's fixed order -->
   <!-- 1 release/version -->
   [![Release](https://img.shields.io/static/v1?label=release&message=v1.6.2&style=for-the-badge&color=3b82f6&labelColor=111a35)](https://github.com/jellysin/release-helper/releases) <!-- x-release-please-version -->
