@@ -49,8 +49,8 @@ exceptions:
   - rule: release-token
     path: .github/workflows/release-please.yml
     category: C
-    reason: "category C: release-please runs on the workflow token and a following step dispatches the release pull request checks explicitly; an App token needs a GitHub App the operator creates (DECISION release-helper-release-app-token-20261102)"
-    expires: 2026-11-12
+    reason: "category C: RELEASE_APP_PRIVATE_KEY is an optional workflow_call secret; without it release-please falls back to github.token and the run log names that path; the rule gains an optional-key shape in cordanaLLM/praetor#1833 (DECISION release-helper-optional-key-vs-release-token-rule)"
+    expires: 2026-11-16
 release:
   e2e:
     paths: [tests/e2e/**]

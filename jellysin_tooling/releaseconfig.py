@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from .common import ValidationError, decode_json, digest, read_json, require
+from .common import ValidationError, decode_json, digest, read_json, require, semver
 from .github import command
 
 RELEASE_PLEASE_VERSION = "17.6.0"
@@ -258,7 +258,79 @@ def creates_release_tags(root):
     return False
 
 
+def tag_commit(root, tag):
+    """Return the commit tag names, or None when the tag is absent."""
+    try:
+        return command(["git", "rev-parse", "--verify", f"{tag}^{{commit}}"], cwd=str(root))
+    except ValidationError:
+        return None
+
+
+def parent_manifest_version(root):
+    """Return the manifest version before the last first-parent commit that changed it, or None.
+
+    That commit is the release-please bump on a release PR head, on its merge ref, and on the
+    merged commit, even when later commits follow the bump on the release branch.
+    """
+    try:
+        bump = command(
+            ["git", "rev-list", "--first-parent", "-n", "1", "HEAD", "--", ".release-please-manifest.json"],
+            cwd=str(root),
+        )
+        require(bump != "", "Manifest was never committed")
+        raw = command(["git", "show", f"{bump}^1:.release-please-manifest.json"], cwd=str(root))
+        data = decode_json(raw.encode("utf-8"))
+        require(isinstance(data, dict) and list(data.keys()) == ["."], "Invalid parent manifest shape")
+        return semver(data["."])
+    except ValidationError:
+        return None
+
+
+def release_tag_commit(root, version, inc_v):
+    """Return the tag commit to compare last-release-sha with, and the version it belongs to.
+
+    A release commit (a release PR head, or its merge ref) bumps the manifest before its tag
+    exists; it is compared with the previous version's tag. Everything else needs its own tag.
+    """
+    tag = f"v{version}" if inc_v else version
+    commit = tag_commit(root, tag)
+    if commit is not None:
+        return commit, version
+    previous = parent_manifest_version(root)
+    if previous is not None and previous != version:
+        commit = tag_commit(root, f"v{previous}" if inc_v else previous)
+        if commit is not None:
+            return commit, previous
+    raise ValidationError(
+        f"Release tag {tag!r} is absent although a workflow runs release-helper actions/prepare; "
+        f"push tag {tag!r} on the release {version} commit, "
+        "or remove last-release-sha from release-please-config.json"
+    )
+
+
+def verify_last_release_sha(root, last_sha, release_commit, version):
+    """Fail unless last_sha is the release commit or a descendant of it."""
+    try:
+        last_commit = command(["git", "rev-parse", "--verify", f"{last_sha}^{{commit}}"], cwd=str(root))
+    except ValidationError as exc:
+        raise ValidationError(f"last-release-sha {last_sha!r} is not a commit in this repository") from exc
+
+    if last_commit == release_commit:
+        return
+
+    if is_ancestor(last_commit, release_commit, root):
+        raise ValidationError(
+            f"last-release-sha {last_commit} is older than release {version} tag commit {release_commit}"
+        )
+
+    require(
+        is_ancestor(release_commit, last_commit, root),
+        f"last-release-sha {last_commit} is not in tag history of {release_commit}",
+    )
+
+
 def stale_last_release_sha(root, config, manifest):
+    """Fail when last-release-sha predates the release tag of the manifest version."""
     if "last-release-sha" not in config:
         return
     require(
@@ -270,7 +342,6 @@ def stale_last_release_sha(root, config, manifest):
     inc_comp = pkg_config.get("include-component-in-tag", config.get("include-component-in-tag", False))
     require(not inc_comp, "include-component-in-tag is unsupported when last-release-sha is set")
     inc_v = pkg_config.get("include-v-in-tag", config.get("include-v-in-tag", True))
-    tag = f"v{version}" if inc_v else version
 
     if not creates_release_tags(root):
         return
@@ -281,31 +352,8 @@ def stale_last_release_sha(root, config, manifest):
         "Shallow clone: the last-release-sha check needs full history and tags; check out with fetch-depth: 0",
     )
 
-    try:
-        tag_commit = command(["git", "rev-parse", "--verify", f"{tag}^{{commit}}"], cwd=str(root))
-    except ValidationError as exc:
-        raise ValidationError(
-            f"Release tag {tag!r} is absent although a workflow runs release-helper actions/prepare; "
-            f"push tag {tag!r} on the release {version} commit, "
-            "or remove last-release-sha from release-please-config.json"
-        ) from exc
-
-    last_sha = config["last-release-sha"]
-    try:
-        last_commit = command(["git", "rev-parse", "--verify", f"{last_sha}^{{commit}}"], cwd=str(root))
-    except ValidationError as exc:
-        raise ValidationError(f"last-release-sha {last_sha!r} is not a commit in this repository") from exc
-
-    if last_commit == tag_commit:
-        return
-
-    if is_ancestor(last_commit, tag_commit, root):
-        raise ValidationError(f"last-release-sha {last_commit} is older than release {version} tag commit {tag_commit}")
-
-    require(
-        is_ancestor(tag_commit, last_commit, root),
-        f"last-release-sha {last_commit} is not in tag history of {tag_commit}",
-    )
+    commit, effective_version = release_tag_commit(root, version, inc_v)
+    verify_last_release_sha(root, config["last-release-sha"], commit, effective_version)
 
 
 def check(root):

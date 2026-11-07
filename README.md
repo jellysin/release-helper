@@ -126,9 +126,40 @@ The reusable `.github/workflows/release-please.yml` collects conventional commit
 into release PRs, including proposed versions and changelogs. It sets
 `skip-github-release: true`: main merges can prepare PRs but never create tags,
 GitHub drafts or published releases. Merging a release PR updates files only.
-It explicitly dispatches the caller's `ci.yml` for at most 20 returned release PRs,
-with a 60-second timeout per dispatch. It exposes no publication inputs or tag
-output and never dispatches a publication workflow.
+It opens release PRs with an installation token of the release GitHub App, minted by
+`actions/create-github-app-token` from the variable `RELEASE_APP_CLIENT_ID` and the secret
+`RELEASE_APP_PRIVATE_KEY`, so their `pull_request` events start the caller's CI. The secret
+is an optional `workflow_call` secret, and the run log names the token path taken. Without
+it, release-please uses `GITHUB_TOKEN`:
+
+- the caller repository must enable **Allow GitHub Actions to create and approve pull
+  requests** (Settings > Actions > General), or `GITHUB_TOKEN` cannot open the release PR;
+  a caller that cannot enable it passes the App key;
+- the workflow dispatches the caller's `ci.yml` on the release PR branch, as 1.6.2 did, so
+  the caller's checks run on the release PR head; the caller's `ci.yml` needs a
+  `workflow_dispatch` trigger. The release PR's own `pull_request` runs (`opened`,
+  `synchronize`, `reopened`) still start in an approval-required state, and the dispatch
+  covers only `ci.yml`: required checks from other workflows, such as CodeQL, and any
+  required check the ruleset takes only from `pull_request` runs report once a user with
+  write access approves those runs with **Approve workflows to run**.
+
+On both paths the calling job grants the permissions the release job requests, since a
+called workflow cannot raise the caller's token permissions. A caller with the release
+GitHub App also passes the key explicitly:
+
+```yaml
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    uses: jellysin/release-helper/.github/workflows/release-please.yml@<sha> # v1.7.0
+    secrets:
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+```
+
+The workflow exposes no publication inputs or tag output and never dispatches a publication
+workflow.
 
 Its programs run on the interpreter `.python-version` names, not on the one the runner image
 ships. The job reads that file from the helper commit that defines the workflow
@@ -164,12 +195,8 @@ upload; every other differing asset remains a conflict requiring a new version.
 The retry implementation is in [`jellysin_tooling/release.py`](jellysin_tooling/release.py)
 and its recovery and refusal cases are in [`tests/test_release.py`](tests/test_release.py).
 Releases up to v1.4.2 carry no bundles. An existing draft and the exact tag are prerequisites;
-release PR preparation creates neither, `actions/prepare` creates both. GitHub currently requires maintainer approval of
-`GITHUB_TOKEN`-created PR workflows, including later updates; dispatching CI does
-not clear that separate approval gate. This is the documented
-[June 11, 2026 GitHub behavior](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/).
-Maintainers approve the actual PR workflow after reviewing the current changes.
-The automation retains only the built-in token; unattended PR merging is not promised.
+release PR preparation creates neither, `actions/prepare` creates both.
+Unattended release PR merging is not promised.
 
 ## Milestone check
 

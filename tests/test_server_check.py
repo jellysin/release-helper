@@ -729,8 +729,9 @@ class SurfaceTests(ServerCheckCase):
 
     def test_renovate_finds_the_default_image_pin(self):
         managers = read_json(ROOT / "renovate.json")["customManagers"]
-        self.assertEqual(len(managers), 1)
-        manager = managers[0]
+        docker = [m for m in managers if m.get("datasourceTemplate") == "docker"]
+        self.assertEqual(len(docker), 1)
+        manager = docker[0]
         self.assertEqual((manager["customType"], manager["datasourceTemplate"]), ("regex", "docker"))
         (pattern,) = manager["managerFilePatterns"]
         self.assertTrue(pattern.startswith("/") and pattern.endswith("/"))
