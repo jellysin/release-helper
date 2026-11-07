@@ -1,11 +1,33 @@
-# JellySin Release Helper
+<!-- markdownlint-disable MD013 MD023 MD033 MD036 MD041 -->
+<!-- A centred header needs inline HTML, a banner image, indented headings and
+     badge lines past 80 columns, so those five rules are off for this file.
+     The prose below still wraps at 80. -->
+<div align="center">
 
-[![CodeRabbit reviews][coderabbit-badge]][coderabbit] [![Codacy grade][codacy-badge]][codacy]
+  <img src="docs/assets/release-helper-readme-banner.svg" alt="JellySin Release Helper — shared build and release tools for independent Jellyfin 12 plugins" height="120" />
 
-[coderabbit-badge]: https://img.shields.io/coderabbit/prs/github/jellysin/release-helper
-[coderabbit]: https://coderabbit.ai
-[codacy-badge]: https://app.codacy.com/project/badge/Grade/6f6fa8ca436c4553806af0441812403d
-[codacy]: https://app.codacy.com/gh/jellysin/release-helper/dashboard
+  <h1>JellySin Release Helper</h1>
+
+  <!-- badge block: groups in the fleet README standard's fixed order -->
+  <!-- 1 release/version -->
+  [![Release](https://img.shields.io/static/v1?label=release&message=v1.6.2&style=for-the-badge&color=3b82f6&labelColor=111a35)](https://github.com/jellysin/release-helper/releases) <!-- x-release-please-version -->
+  <!-- 2 CI/build -->
+  [![CI](https://github.com/jellysin/release-helper/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/jellysin/release-helper/actions/workflows/ci.yml)
+  <!-- 3 security/scorecard -->
+  [![CodeQL](https://github.com/jellysin/release-helper/actions/workflows/codeql.yml/badge.svg?branch=main&event=push)](https://github.com/jellysin/release-helper/actions/workflows/codeql.yml)
+  [![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-Scorecard-06b6d4?style=for-the-badge&labelColor=111a35)](https://scorecard.dev/viewer/?uri=github.com/jellysin/release-helper)
+  [![Codacy](https://app.codacy.com/project/badge/Grade/6f6fa8ca436c4553806af0441812403d)](https://app.codacy.com/gh/jellysin/release-helper/dashboard)
+  [![CodeRabbit](https://img.shields.io/badge/Reviews-CodeRabbit-8b5cf6?style=for-the-badge&logo=coderabbit&logoColor=white&labelColor=111a35)](https://coderabbit.ai)
+  <!-- 4 standards -->
+  [![Conventional Commits](https://img.shields.io/badge/Commits-Conventional-8b5cf6?style=for-the-badge&logo=conventionalcommits&logoColor=white&labelColor=111a35)](CONTRIBUTING.md)
+  <!-- 5 licence -->
+  [![License](https://img.shields.io/badge/License-EUPL--1.2-3b82f6?style=for-the-badge&labelColor=111a35)](LICENSE)
+
+  **Shared, versioned build and release tools for independent Jellyfin 12 plugins**
+
+  *Deterministic packaging, signed provenance verification, and repository trust*
+
+</div>
 
 Shared, versioned build and release tools for independent Jellyfin 12 plugins.
 Python's standard library handles packaging and plugin repository validation; GitHub CLI
@@ -369,8 +391,12 @@ workflow commit and fetched `origin/main`. Recovery verifies all four original
 It does not create attestations, move tags, or relax artifact and immutability
 checks. Normal publication still requires the original tag workflow context.
 
+## Upstream and licence
+
 EUPL-1.2 covers this source. License text comes from the SPDX license list;
 third-party Actions retain their own licenses. See CONTRIBUTING.md for validation.
+
+## Standards & Governance
 
 <!-- praetor:readme-governance:start -->
 [![HISS Adopted][praetor-hiss-badge]][praetor-hiss-agents]
