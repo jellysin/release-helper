@@ -26,6 +26,20 @@
       "currentValueTemplate": "HEAD",
       "customType": "regex",
       "datasourceTemplate": "git-refs",
+      "depNameTemplate": "horistes-preset-pin",
+      "description": "Shared Renovate preset commit pin: track the default branch of plurano/horistes",
+      "managerFilePatterns": [
+        "/^renovate\\.json$/"
+      ],
+      "matchStrings": [
+        "github>plurano/horistes#(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "packageNameTemplate": "https://github.com/plurano/horistes"
+    },
+    {
+      "currentValueTemplate": "HEAD",
+      "customType": "regex",
+      "datasourceTemplate": "git-refs",
       "depNameTemplate": "praetor-workflow-engine-pin",
       "description": "praetor workflow engine commit pin: track the engine default branch",
       "managerFilePatterns": [
