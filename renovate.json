@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "github>plurano/horistes",
+    "github>plurano/horistes#2368b588cf97621b275ae7fd4eb10d720dc64688",
     "helpers:pinGitHubActionDigests"
   ],
   "dependencyDashboard": true,
@@ -21,6 +21,20 @@
         "SERVER_IMAGE = \"(?<depName>jellyfin/jellyfin):(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\""
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "currentValueTemplate": "HEAD",
+      "customType": "regex",
+      "datasourceTemplate": "git-refs",
+      "depNameTemplate": "horistes-preset-pin",
+      "description": "Shared Renovate preset commit pin: track the default branch of plurano/horistes",
+      "managerFilePatterns": [
+        "/^renovate\\.json$/"
+      ],
+      "matchStrings": [
+        "github>plurano/horistes#(?<currentDigest>[0-9a-f]{40})"
+      ],
+      "packageNameTemplate": "https://github.com/plurano/horistes"
     },
     {
       "currentValueTemplate": "HEAD",
