@@ -196,7 +196,8 @@ def metadata(value):
 def read_release_files(directory, release):
     """Read and safety-check the four expected release artifacts from *directory*."""
     root = Path(directory).resolve(strict=True)
-    names = {release["archive"]["name"], "release.json", "sbom.spdx.json", "checksums.txt"}
+    archive_name = filename(release["archive"]["name"])
+    names = {archive_name, "release.json", "sbom.spdx.json", "checksums.txt"}
     files = {}
     for name in names:
         path = root / name
