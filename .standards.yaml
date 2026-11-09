@@ -58,4 +58,6 @@ release:
     # tests/e2e/test_makefile_spaced_venv.py and tests/e2e/test_source_dot_repository.py.
     # #126 shipped without an e2e test; its behaviour is now covered by
     # tests/e2e/test_prepare_release_merge.py and tests/e2e/test_publish_bundle_retry.py.
-    since: 17153e53b83d2b3c36d8542659b0edf51ea8495b
+    # #155 shipped without an e2e test; its behaviour is now covered by
+    # tests/e2e/test_release_file_reader.py.
+    since: 2625f4b711c3580a6e7d59cb854dbb11c16ec34a

@@ -72,6 +72,8 @@ class SourceReleaseTests(Workspace):
         command(["git", "init", "-b", "main"], cwd=str(repo_dir))
         command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
         command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
+        command(["git", "config", "commit.gpgsign", "false"], cwd=str(repo_dir))
+        command(["git", "config", "tag.gpgsign", "false"], cwd=str(repo_dir))
         if files is None:
             files = {"README.md": "# Source Repo\n", "main.py": "print('hello')\n"}
         for rel_path, content in files.items():
