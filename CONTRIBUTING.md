@@ -26,7 +26,8 @@ actionlint
 ```
 
 `make verify-all` runs these commands and the governance checks (agent context, text
-register, audit). The governance targets run the Praetor engine that `PRAETOR_REF` in
+register, audit, and the release-context audit that the release pull request runs). The
+governance targets run the Praetor engine that `PRAETOR_REF` in
 `.github/workflows/ci.yml` pins; `.config/lefthook/engine.sh` installs it with Go on
 first use, and the Git hooks call the same launcher.
 
