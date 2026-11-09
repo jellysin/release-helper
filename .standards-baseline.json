@@ -1,18 +1,8 @@
 {
   "version": 1,
-  "generated_at": "2026-11-09T22:32:00Z",
+  "generated_at": "2026-10-11T15:14:33Z",
   "repository": "jellysin/release-helper",
   "commit_sha": "83bcc6a56c75b9da7a1d66a9755ec310a9d6a5a2",
-  "total_infractions": 1,
-  "increase_rationale": "adoption baseline",
-  "infractions": [
-    {
-      "rule_id": "RELEASE-TEST-LEVEL",
-      "file_path": ".standards.yaml",
-      "line_number": 1,
-      "message": "missing release test level load_soak for profile app-service: no tracked file matches paths [tests/load/**]",
-      "anchor": "level:app-service:load_soak",
-      "fingerprint": ".standards.yaml:RELEASE-TEST-LEVEL:level:app-service:load_soak#1"
-    }
-  ]
+  "total_infractions": 0,
+  "infractions": []
 }

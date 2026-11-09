@@ -86,7 +86,8 @@ release:
       paths: [tests/test_release_recovery.py]
       job: checks
       run: unittest discover -s tests
-    # No load or soak test exists; the gap predates the gate and is recorded in
-    # .standards-baseline.json until one lands.
+    # Repeated catalog publish cycles and volume at the manifest limits.
     load_soak:
       paths: [tests/load/**]
+      job: checks
+      run: unittest discover -s tests

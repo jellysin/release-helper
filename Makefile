@@ -8,9 +8,9 @@ DEV_VENV ?= .venv
 export DEV_VENV
 DIST_PYTHON ?= python3
 ACTIONLINT := actionlint
-.PHONY: verify-all bootstrap python-env compile-context compile-context-verify caveman-sources audit release-audit lint policy test workflows dist
+.PHONY: verify-all bootstrap python-env compile-context compile-context-verify caveman-sources audit release-audit release-audit-replay lint policy test workflows dist
 
-verify-all: compile-context-verify caveman-sources audit release-audit lint policy test workflows
+verify-all: compile-context-verify caveman-sources audit release-audit release-audit-replay lint policy test workflows
 
 bootstrap:
 	@case "$$DEV_VENV" in .venv|*/.venv) ;; *) echo "DEV_VENV must name a .venv directory, not $$DEV_VENV" >&2; exit 1;; esac
@@ -39,6 +39,9 @@ audit:
 # test level gaps fail instead of warning. Running it here refuses them before the release.
 release-audit:
 	@PRAETOR_RELEASE_PR=true $(PRAETORCTL) audit
+
+release-audit-replay: python-env
+	@"$$DEV_VENV/bin/python" tests/release_audit_replay.py "$(PRAETORCTL)"
 
 lint: python-env
 	@"$$DEV_VENV/bin/python" -m ruff check .

@@ -26,9 +26,11 @@ actionlint
 ```
 
 `make verify-all` runs these commands and the governance checks (agent context, text
-register, audit, and the release-context audit that the release pull request runs). The
-governance targets run the Praetor engine that `PRAETOR_REF` in
-`.github/workflows/ci.yml` pins; `.config/lefthook/engine.sh` installs it with Go on
+register, audit, and the release-context audit that the release pull request runs).
+`release-audit-replay` runs `tests/release_audit_replay.py`, which plants missing release
+evidence in a temporary worktree and checks the exit code and finding of the offline audit
+in both the default and the release context. The governance targets run the Praetor engine
+that `PRAETOR_REF` in `.github/workflows/ci.yml` pins; `.config/lefthook/engine.sh` installs it with Go on
 first use, and the Git hooks call the same launcher.
 
 The tests need `actionlint` on `PATH` and fail without it. `.github/actionlint.yaml`

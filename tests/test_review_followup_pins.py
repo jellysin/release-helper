@@ -9,6 +9,8 @@ import json
 import re
 import unittest
 
+import yaml
+
 from tests.action_steps import ROOT
 
 MINIMAL_ACTION = """\
@@ -78,23 +80,63 @@ def validate_renovate_preset_pins(config: dict) -> list[str]:
     return pinned
 
 
-def validate_cosign_step_content(step: str) -> None:
+def validate_cosign_step(step: dict) -> None:
     """Validate that the cosign-installer step is pinned to 40 lowercase hex characters with an exact release tag.
 
-    Uppercase hexadecimal is refused: git prints object names in lowercase, so an uppercase
-    pin was typed by hand rather than copied from a resolved commit.
+    The step must carry neither 'if' nor 'continue-on-error' keys.
     """
-    if not re.search(r"uses:\s*sigstore/cosign-installer@[0-9a-f]{40}(?:\s|$|#)", step):
+    if "if" in step:
+        raise ValueError("Installer step 'sigstore/cosign-installer' must not define an 'if' condition")
+    if "continue-on-error" in step:
+        raise ValueError("Installer step 'sigstore/cosign-installer' must not define 'continue-on-error'")
+
+    uses = step.get("uses", "")
+    parts = uses.split("@")
+    if len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{40}", parts[1]):
         raise ValueError("Step 'sigstore/cosign-installer' must be pinned to a 40-character lowercase hex commit SHA")
-    if not re.search(r"^\s*cosign-release:\s*v\d+\.\d+\.\d+\s*$", step, re.MULTILINE):
+
+    with_block = step.get("with")
+    if not isinstance(with_block, dict):
+        raise ValueError("Installer step 'sigstore/cosign-installer' missing 'with' configuration")
+    cosign_release = with_block.get("cosign-release")
+    if not isinstance(cosign_release, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", cosign_release):
         raise ValueError("cosign-release must specify an exact version 'v<digits>.<digits>.<digits>'")
 
 
-def validate_publish_action_steps(action_text: str) -> tuple[int, int]:
+def _extract_action_steps(action: dict) -> list[dict]:
+    """Extract and validate the runs.steps list from an action mapping."""
+    if not isinstance(action, dict):
+        raise ValueError("Action definition must be a dictionary")
+    runs = action.get("runs")
+    if not isinstance(runs, dict):
+        raise ValueError("Action definition missing 'runs' dictionary")
+    steps = runs.get("steps")
+    if not isinstance(steps, list):
+        raise ValueError("Action definition missing 'runs.steps' list")
+    return steps
+
+
+def _find_step_indices(steps: list[dict]) -> tuple[list[int], list[int]]:
+    """Locate cosign-installer and publish step positions in the action steps."""
+    cosign_indices = []
+    publish_indices = []
+    for idx, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        uses = step.get("uses")
+        if isinstance(uses, str) and uses.split("@")[0] == "sigstore/cosign-installer":
+            validate_cosign_step(step)
+            cosign_indices.append(idx)
+        run = step.get("run")
+        if isinstance(run, str) and 'tools.py" publish' in run:
+            publish_indices.append(idx)
+    return cosign_indices, publish_indices
+
+
+def validate_publish_action_steps(action: dict) -> tuple[int, int]:
     """Validate that actions/publish/action.yml installs cosign before running the publish command."""
-    steps = re.split(r"(?m)^ {4}- ", action_text)[1:]
-    cosign_indices = [i for i, s in enumerate(steps) if "sigstore/cosign-installer" in s]
-    publish_indices = [i for i, s in enumerate(steps) if 'tools.py" publish' in s]
+    steps = _extract_action_steps(action)
+    cosign_indices, publish_indices = _find_step_indices(steps)
 
     if not cosign_indices:
         raise ValueError("Step 'sigstore/cosign-installer' is missing")
@@ -108,7 +150,6 @@ def validate_publish_action_steps(action_text: str) -> tuple[int, int]:
     if cosign_idx >= publish_idx:
         raise ValueError(f"cosign-installer step (index {cosign_idx}) must precede publish step (index {publish_idx})")
 
-    validate_cosign_step_content(steps[cosign_idx])
     return cosign_idx, publish_idx
 
 
@@ -177,19 +218,22 @@ class PublishActionPinTests(unittest.TestCase):
     def test_positive_repo_publish_action_valid(self):
         """Validate repository actions/publish/action.yml installs cosign before running the publish shell step."""
         action_path = ROOT / "actions" / "publish" / "action.yml"
-        action_text = action_path.read_text(encoding="utf-8")
-        cosign_idx, publish_idx = validate_publish_action_steps(action_text)
+        action = yaml.safe_load(action_path.read_text(encoding="utf-8"))
+        cosign_idx, publish_idx = validate_publish_action_steps(action)
         self.assertLess(cosign_idx, publish_idx)
+        self.assertEqual(cosign_idx, 1)
 
     def test_negative_cosign_step_missing_refused(self):
         """Refuse action definitions where the sigstore/cosign-installer step is missing."""
+        action = yaml.safe_load(NO_COSIGN_ACTION)
         with self.assertRaisesRegex(ValueError, "Step 'sigstore/cosign-installer' is missing"):
-            validate_publish_action_steps(NO_COSIGN_ACTION)
+            validate_publish_action_steps(action)
 
     def test_negative_cosign_step_after_publish_refused(self):
         """Refuse action definitions where the cosign-installer step appears after the publish step."""
+        action = yaml.safe_load(REVERSED_ACTION)
         with self.assertRaisesRegex(ValueError, "must precede publish step"):
-            validate_publish_action_steps(REVERSED_ACTION)
+            validate_publish_action_steps(action)
 
     def test_negative_cosign_release_latest_refused(self):
         """Refuse cosign installer configurations using unpinned 'latest' instead of exact version."""
@@ -197,8 +241,9 @@ class PublishActionPinTests(unittest.TestCase):
             cosign_ref="sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532",
             cosign_release="latest",
         )
+        action = yaml.safe_load(action_text)
         with self.assertRaisesRegex(ValueError, "cosign-release must specify an exact version"):
-            validate_publish_action_steps(action_text)
+            validate_publish_action_steps(action)
 
     def test_negative_cosign_tag_ref_refused(self):
         """Refuse cosign installer step referencing a git tag instead of full commit SHA."""
@@ -206,8 +251,9 @@ class PublishActionPinTests(unittest.TestCase):
             cosign_ref="sigstore/cosign-installer@v4.1.3",
             cosign_release="v3.1.4",
         )
+        action = yaml.safe_load(action_text)
         with self.assertRaisesRegex(ValueError, "must be pinned to a 40-character lowercase hex"):
-            validate_publish_action_steps(action_text)
+            validate_publish_action_steps(action)
 
     def test_negative_cosign_short_sha_refused(self):
         """Refuse cosign installer step referencing a short commit SHA instead of full 40-character SHA."""
@@ -215,8 +261,9 @@ class PublishActionPinTests(unittest.TestCase):
             cosign_ref="sigstore/cosign-installer@756fe2d",
             cosign_release="v3.1.4",
         )
+        action = yaml.safe_load(action_text)
         with self.assertRaisesRegex(ValueError, "must be pinned to a 40-character lowercase hex"):
-            validate_publish_action_steps(action_text)
+            validate_publish_action_steps(action)
 
     def test_boundary_cosign_uppercase_hex_refused(self):
         """Refuse an uppercase action SHA; git prints object names in lowercase."""
@@ -224,5 +271,76 @@ class PublishActionPinTests(unittest.TestCase):
             cosign_ref="sigstore/cosign-installer@756FE2D284C7292C4E9B62C8A28F1E5629C59532",
             cosign_release="v3.1.4",
         )
+        action = yaml.safe_load(action_text)
         with self.assertRaisesRegex(ValueError, "must be pinned to a 40-character lowercase hex"):
-            validate_publish_action_steps(action_text)
+            validate_publish_action_steps(action)
+
+    def test_negative_cosign_in_comment_and_run_script_refused(self):
+        """Refuse action when installer name appears only in comments and another step's run script."""
+        action_text = """\
+runs:
+  using: composite
+  steps:
+    - # uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
+      shell: bash
+      run: |
+        echo "sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532"
+        python "$TOOL_ROOT/tools.py" publish --directory dist
+"""
+        action = yaml.safe_load(action_text)
+        with self.assertRaisesRegex(ValueError, "Step 'sigstore/cosign-installer' is missing"):
+            validate_publish_action_steps(action)
+
+    def test_negative_cosign_with_if_condition_refused(self):
+        """Refuse cosign installer step that defines an if condition."""
+        action_text = """\
+runs:
+  using: composite
+  steps:
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
+      if: false
+      with:
+        cosign-release: v3.1.4
+    - shell: bash
+      run: |
+        python "$TOOL_ROOT/tools.py" publish --directory dist
+"""
+        action = yaml.safe_load(action_text)
+        with self.assertRaisesRegex(ValueError, "must not define an 'if' condition"):
+            validate_publish_action_steps(action)
+
+    def test_negative_cosign_with_continue_on_error_refused(self):
+        """Refuse cosign installer step that defines continue-on-error."""
+        action_text = """\
+runs:
+  using: composite
+  steps:
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
+      continue-on-error: true
+      with:
+        cosign-release: v3.1.4
+    - shell: bash
+      run: |
+        python "$TOOL_ROOT/tools.py" publish --directory dist
+"""
+        action = yaml.safe_load(action_text)
+        with self.assertRaisesRegex(ValueError, "must not define 'continue-on-error'"):
+            validate_publish_action_steps(action)
+
+    def test_negative_cosign_release_in_comment_only_refused(self):
+        """Refuse cosign installer step where cosign-release is present only in a comment."""
+        action_text = """\
+runs:
+  using: composite
+  steps:
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532
+      with:
+        # cosign-release: v3.1.4
+        other: value
+    - shell: bash
+      run: |
+        python "$TOOL_ROOT/tools.py" publish --directory dist
+"""
+        action = yaml.safe_load(action_text)
+        with self.assertRaisesRegex(ValueError, "cosign-release must specify an exact version"):
+            validate_publish_action_steps(action)

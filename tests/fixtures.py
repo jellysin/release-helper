@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from jellysin_tooling.common import ValidationError
 from jellysin_tooling.package import build
@@ -83,9 +84,11 @@ def recording_runner(client, remote, repo, output, writes):
     """Return a runner callback recording gh invocations and updating fake GitHub assets."""
 
     def runner(arguments):
+        """Execute a simulated gh API call, recording writes and updating fake release assets."""
         writes.append(arguments)
         if "POST" in arguments:
-            name = arguments[4].split("name=")[1]
+            endpoint = next(arg for arg in arguments if arg.startswith("https://uploads.github.com/"))
+            name = parse_qs(urlparse(endpoint).query)["name"][0]
             asset_id = len(remote["assets"]) + 1
             data = (output / name).read_bytes()
             url = f"https://github.com/{repo}/releases/download/untagged-fixture-1/{name}"
