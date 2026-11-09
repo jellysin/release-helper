@@ -7,10 +7,12 @@ when end-to-end evidence or release test levels are missing.
 
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
+
+GIT = shutil.which("git")
 
 LOAD_SOAK_BLOCK = """    # Repeated catalog publish cycles and volume at the manifest limits.
     load_soak:
@@ -59,34 +61,47 @@ def resolve_engine(arg: str) -> str:
     return resolved
 
 
+def run_git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run a git command in cwd using the resolved GIT binary and return the process."""
+    if GIT is None:
+        raise RuntimeError("expected a git binary on PATH")
+    # Fixed git binary from shutil.which, argument list, no shell, script-controlled arguments.
+    res = subprocess.run(  # nosec B603  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+        [GIT, *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if check and res.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args[:2])} failed with exit {res.returncode}: {res.stderr.strip()}")
+    return res
+
+
 def overlay_working_tree(repo_root: Path, tree: Path) -> None:
     """Overlay uncommitted modified, untracked, and deleted files onto the worktree."""
-    raw_mod = subprocess.check_output(
-        ["git", "ls-files", "-z", "--modified", "--others", "--exclude-standard"],
-        cwd=str(repo_root),
-        timeout=60,
-    )
-    for rel in raw_mod.split(b"\0"):
+    mod_res = run_git(repo_root, "ls-files", "-z", "--modified", "--others", "--exclude-standard")
+    for rel in mod_res.stdout.split("\0"):
         if not rel:
             continue
-        rel_str = rel.decode("utf-8")
-        src = repo_root / rel_str
-        dst = tree / rel_str
+        src = repo_root / rel
+        dst = tree / rel
         # --modified also lists unstaged deletions; the deleted pass below removes those.
         if not src.is_file():
             continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
 
-    raw_del = subprocess.check_output(["git", "ls-files", "-z", "--deleted"], cwd=str(repo_root), timeout=60)
-    for rel in raw_del.split(b"\0"):
+    del_res = run_git(repo_root, "ls-files", "-z", "--deleted")
+    for rel in del_res.stdout.split("\0"):
         if not rel:
             continue
-        dst = tree / rel.decode("utf-8")
+        dst = tree / rel
         if dst.exists():
             dst.unlink()
 
-    subprocess.check_call(["git", "add", "-A"], cwd=str(tree), timeout=60)
+    run_git(tree, "add", "-A")
 
 
 def create_replay_tree(repo_root: Path, temp_dir: Path) -> Path:
@@ -96,27 +111,19 @@ def create_replay_tree(repo_root: Path, temp_dir: Path) -> Path:
     cannot be created stops the replay with git's message.
     """
     tree = temp_dir / "tree"
-    result = subprocess.run(
-        ["git", "worktree", "add", "--detach", str(tree), "HEAD"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"git worktree add failed with exit {result.returncode}: {result.stderr.strip()}")
+    run_git(repo_root, "worktree", "add", "--detach", str(tree), "HEAD")
     return tree
 
 
 def remove_replay_tree(repo_root: Path, tree: Path) -> bool:
     """Remove the replay worktree and prune its records; report each failure without raising."""
     removed = True
-    for command in (["git", "worktree", "remove", "--force", str(tree)], ["git", "worktree", "prune"]):
-        result = subprocess.run(command, cwd=str(repo_root), capture_output=True, text=True, timeout=60, check=False)
+    for args in (("worktree", "remove", "--force", str(tree)), ("worktree", "prune")):
+        result = run_git(repo_root, *args, check=False)
         if result.returncode != 0:
             print(
-                f"cleanup: {' '.join(command[:3])} exit {result.returncode}: {result.stderr.strip()}", file=sys.stderr
+                f"cleanup: git {' '.join(args[:2])} exit {result.returncode}: {result.stderr.strip()}",
+                file=sys.stderr,
             )
             removed = False
     return removed
@@ -129,8 +136,11 @@ def run_audit(engine: str, cwd: Path, release_context: bool) -> tuple[int, str]:
     env.pop("GITHUB_HEAD_REF", None)
     if release_context:
         env["PRAETOR_RELEASE_PR"] = "true"
-    res = subprocess.run(
-        [engine, "audit", "--offline"],
+    # Engine path from the gate's argument, resolved by shutil.which in resolve_engine; list argv, no shell.
+    # Each finding is suppressed on its own line: the call (audit rule) and the argv (tainted-argument rule).
+    argv = [engine, "audit", "--offline"]
+    res = subprocess.run(  # nosec B603  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+        argv,  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
         cwd=str(cwd),
         env=env,
         capture_output=True,
@@ -177,7 +187,7 @@ def main() -> None:
         sys.exit(2)
 
     engine = resolve_engine(sys.argv[1])
-    repo_root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, timeout=60).strip())
+    repo_root = Path(run_git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip())
 
     with tempfile.TemporaryDirectory() as td:
         tree = create_replay_tree(repo_root, Path(td))
