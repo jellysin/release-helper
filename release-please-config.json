@@ -3,6 +3,7 @@
   "release-type": "simple",
   "include-component-in-tag": false,
   "skip-github-release": true,
+  "pull-request-header": "## Change\n\nRelease pull request opened by release-please. Merging it releases the version named below. release-please wrote the version bumps in `.release-please-manifest.json`, `pyproject.toml`, `version.txt` and `README.md`, and the changelog entry below, from the Conventional Commit subjects since the last release.\n\n## Validation\n\nrelease-please runs no check. CI on this pull request runs the release gates (milestone check, release end-to-end evidence) and the required status checks of the `main` ruleset, which block the merge until they pass.",
   "packages": {
     ".": {
       "package-name": "jellysin-release-helper",
