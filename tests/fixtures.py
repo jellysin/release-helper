@@ -79,6 +79,34 @@ def approved(info=FIRST):
     return {"guid": info["guid"], "repository": info["repository"], "signerWorkflow": ".github/workflows/release.yml"}
 
 
+def recording_runner(client, remote, repo, output, writes):
+    """Return a runner callback recording gh invocations and updating fake GitHub assets."""
+
+    def runner(arguments):
+        writes.append(arguments)
+        if "POST" in arguments:
+            name = arguments[4].split("name=")[1]
+            asset_id = len(remote["assets"]) + 1
+            data = (output / name).read_bytes()
+            url = f"https://github.com/{repo}/releases/download/untagged-fixture-1/{name}"
+            remote["assets"].append(
+                {
+                    "id": asset_id,
+                    "url": f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}",
+                    "name": name,
+                    "state": "uploaded",
+                    "size": len(data),
+                    "browser_download_url": url,
+                }
+            )
+            client.assets[repo, asset_id] = data
+            client.downloads[url] = data
+        elif "PATCH" in arguments:
+            client.publish(remote)
+
+    return runner
+
+
 GIT_LOCATION_VARIABLES = frozenset(
     {
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",

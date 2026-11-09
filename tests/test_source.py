@@ -19,7 +19,7 @@ from jellysin_tooling.common import (
 )
 from jellysin_tooling.github import command
 from jellysin_tooling.release import publish
-from tests.fixtures import COMMIT, CREATED, FakeGitHub, Workspace
+from tests.fixtures import COMMIT, CREATED, FakeGitHub, Workspace, recording_runner
 
 
 def make_tar_gz(members_dict, prefix="test-1.0.0"):
@@ -273,28 +273,7 @@ class SourceReleaseTests(Workspace):
         remote = client.add({"repository": repo}, release, output, draft=True)
         remote["assets"].clear()
         writes = []
-
-        def runner(arguments):
-            writes.append(arguments)
-            if "POST" in arguments:
-                name = arguments[4].split("name=")[1]
-                asset_id = len(remote["assets"]) + 1
-                data = (output / name).read_bytes()
-                url = f"https://github.com/{repo}/releases/download/untagged-fixture-1/{name}"
-                remote["assets"].append(
-                    {
-                        "id": asset_id,
-                        "url": f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}",
-                        "name": name,
-                        "state": "uploaded",
-                        "size": len(data),
-                        "browser_download_url": url,
-                    }
-                )
-                client.assets[repo, asset_id] = data
-                client.downloads[url] = data
-            elif "PATCH" in arguments:
-                client.publish(remote)
+        runner = recording_runner(client, remote, repo, output, writes)
 
         with (
             patch("jellysin_tooling.release.exact_tag", return_value=commit),
