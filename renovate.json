@@ -10,6 +10,7 @@
   "labels": [
     "dependencies"
   ],
+  "prHeader": "## Change\n\nRenovate proposes this dependency update. The table below names each package with its current and proposed version, and the release notes follow. The reviewer judges from those notes whether the update moves a trust boundary or a public contract and whether consumers need a migration.\n\n## Validation\n\nRenovate runs no check and ticks nothing. The required status checks of the `main` ruleset run on this pull request and block the merge until they pass. Pin evidence: GitHub Actions stay pinned to full commit SHAs (`helpers:pinGitHubActionDigests`), and Python development tools stay pinned to exact versions with hashes in `requirements-dev.txt`; the table below shows each old and new pin.\n\n",
   "customManagers": [
     {
       "customType": "regex",
