@@ -79,29 +79,30 @@ def run_git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedPr
     return res
 
 
-def overlay_working_tree(repo_root: Path, tree: Path) -> None:
-    """Overlay uncommitted modified, untracked, and deleted files onto the worktree."""
-    mod_res = run_git(repo_root, "ls-files", "-z", "--modified", "--others", "--exclude-standard")
-    for rel in mod_res.stdout.split("\0"):
-        if not rel:
-            continue
+def collect_overlay_paths(repo_root: Path) -> list[str]:
+    """Collect tracked changes vs HEAD and untracked unignored paths."""
+    diff_res = run_git(repo_root, "diff", "--no-renames", "--name-only", "-z", "HEAD")
+    untracked_res = run_git(repo_root, "ls-files", "-z", "--others", "--exclude-standard")
+    diff_paths = {rel for rel in diff_res.stdout.split("\0") if rel}
+    untracked_paths = {rel for rel in untracked_res.stdout.split("\0") if rel}
+    return sorted(diff_paths | untracked_paths)
+
+
+def overlay_working_tree(repo_root: Path, tree: Path) -> list[str]:
+    """Overlay staged and unstaged changes plus untracked files, synced from the working tree."""
+    paths = collect_overlay_paths(repo_root)
+    for rel in paths:
         src = repo_root / rel
         dst = tree / rel
-        # --modified also lists unstaged deletions; the deleted pass below removes those.
-        if not src.is_file():
-            continue
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-
-    del_res = run_git(repo_root, "ls-files", "-z", "--deleted")
-    for rel in del_res.stdout.split("\0"):
-        if not rel:
-            continue
-        dst = tree / rel
-        if dst.exists():
+        # A path that is now a directory or submodule matches neither branch and is left alone.
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+        elif not src.exists() and dst.exists():
             dst.unlink()
 
     run_git(tree, "add", "-A")
+    return paths
 
 
 def create_replay_tree(repo_root: Path, temp_dir: Path) -> Path:
