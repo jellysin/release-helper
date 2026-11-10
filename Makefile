@@ -37,8 +37,10 @@ audit:
 
 # The release pull request audits in release context, where end-to-end evidence and release
 # test level gaps fail instead of warning. Running it here refuses them before the release.
+# The local check runs offline; the release pull request judges live workflow run health, so
+# a red main branch never refuses the push that repairs it.
 release-audit:
-	@PRAETOR_RELEASE_PR=true $(PRAETORCTL) audit
+	@PRAETOR_RELEASE_PR=true $(PRAETORCTL) audit --offline
 
 release-audit-replay: python-env
 	@"$$DEV_VENV/bin/python" tests/release_audit_replay.py "$(PRAETORCTL)"

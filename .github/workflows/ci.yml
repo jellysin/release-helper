@@ -52,6 +52,7 @@ jobs:
       # read-only token cannot see drafts (list releases shows drafts only to push access); the publisher requires one.
       # A tag on this commit may still be publishing from release.yml; wait bounded polls before failing it.
       # RELEASE_WAIT_ATTEMPTS and RELEASE_WAIT_INTERVAL clamp to 0..default so tests can run without delay.
+      # v1.7.1's release run failed its replay gate before build, so no asset exists; v1.7.2 carries the fix.
       - name: Check that this repository's releases are immutable and every version tag has one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,6 +84,7 @@ jobs:
                   return default
           # Tagged before release runs could pass this step and build; their drafts are kept, never published.
           SUPERSEDED = {tag: 'tag kept with an unpublished draft; superseded by v1.4.2' for tag in ('v1.4.0', 'v1.4.1')}
+          SUPERSEDED['v1.7.1'] = 'tag kept with an unpublished draft; superseded by v1.7.2'
           REF = os.environ.get('GITHUB_REF', '')
           RUN_TAG = REF.removeprefix('refs/tags/') if REF.startswith('refs/tags/') else None
           SHA = os.environ.get('GITHUB_SHA')
