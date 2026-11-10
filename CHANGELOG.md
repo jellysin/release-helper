@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.1](https://github.com/jellysin/release-helper/compare/v1.7.0...v1.7.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* address unhandled review items from [#126](https://github.com/jellysin/release-helper/issues/126) and [#125](https://github.com/jellysin/release-helper/issues/125) ([#148](https://github.com/jellysin/release-helper/issues/148)) ([a570793](https://github.com/jellysin/release-helper/commit/a5707932afb53ff327bc9322b1db9a0f05efccc8))
+* **common:** extract shared release file reader from duplicate local_artifacts loops ([#155](https://github.com/jellysin/release-helper/issues/155)) ([2625f4b](https://github.com/jellysin/release-helper/commit/2625f4b711c3580a6e7d59cb854dbb11c16ec34a))
+
 ## [1.7.0](https://github.com/jellysin/release-helper/compare/v1.6.2...v1.7.0) (2026-11-06)
 
 
