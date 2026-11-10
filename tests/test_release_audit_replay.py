@@ -90,6 +90,8 @@ class ReleaseAuditReplayOverlayTests(Workspace):
         src, tree = self.setup_repos()
 
         (src / "ignored.txt").write_text("ignored content\n", encoding="utf-8")
+        # Positive control: the fixture's ignore rule matches, so an empty path list is the overlay's doing.
+        self.assertEqual(command(["git", "check-ignore", "ignored.txt"], cwd=str(src)), "ignored.txt")
         orig_bytes = (tree / "keep.txt").read_bytes()
 
         paths = overlay_working_tree(src, tree)
