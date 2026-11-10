@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/jellysin/release-helper/compare/v1.7.1...v1.7.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* **release:** plant an unreleased fix commit in the replay's e2e case ([#163](https://github.com/jellysin/release-helper/issues/163)) ([1c67f9c](https://github.com/jellysin/release-helper/commit/1c67f9c9ba4711ef3b23dc729cfbbde84e114012))
+
 ## [1.7.1](https://github.com/jellysin/release-helper/compare/v1.7.0...v1.7.1) (2026-11-10)
 
 

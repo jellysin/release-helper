@@ -10,7 +10,7 @@
 
   <!-- badge block: groups in the fleet README standard's fixed order -->
   <!-- 1 release/version -->
-  [![Release](https://img.shields.io/static/v1?label=release&message=v1.7.1&style=for-the-badge&color=3b82f6&labelColor=111a35)](https://github.com/jellysin/release-helper/releases) <!-- x-release-please-version -->
+  [![Release](https://img.shields.io/static/v1?label=release&message=v1.7.2&style=for-the-badge&color=3b82f6&labelColor=111a35)](https://github.com/jellysin/release-helper/releases) <!-- x-release-please-version -->
   <!-- 2 CI/build -->
   [![CI](https://github.com/jellysin/release-helper/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/jellysin/release-helper/actions/workflows/ci.yml)
   <!-- 3 security/scorecard -->
