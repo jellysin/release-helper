@@ -303,6 +303,9 @@ jobs:
     name: governance (praetor)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Stop on a draft pull request
         if: github.event.pull_request.draft == true
@@ -336,7 +339,10 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Context integrity
         run: praetorctl compile-context --verify
+      # The audit reads default-branch workflow run health from the forge with this read-only token.
       - name: HISS audit
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: praetorctl audit
       - name: Replay the release audit gate
         run: python3 tests/release_audit_replay.py praetorctl

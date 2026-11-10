@@ -26,8 +26,9 @@ actionlint
 ```
 
 `make verify-all` runs these commands and the governance checks (agent context, text
-register, audit, and an offline run of the release-context audit; the release pull request
-runs that audit online, with live workflow run health).
+register, audit, and an offline run of the release-context audit). The release pull request
+runs that audit online with live workflow run health: the governance job holds a job-scoped
+`actions: read` permission and passes `GH_TOKEN` to its audit step only.
 `release-audit-replay` runs `tests/release_audit_replay.py`, which plants missing release
 evidence in a temporary worktree and checks the exit code and finding of the offline audit
 in both the default and the release context. The governance targets run the Praetor engine

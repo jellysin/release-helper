@@ -15,6 +15,7 @@ from tests.fixtures import CREATED, FakeGitHub, Workspace
 from tests.test_tool_name import message
 
 ROOT = Path(__file__).resolve().parents[1]
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 BUILD_SIGNED_WORKFLOW = ROOT / ".github" / "workflows" / "build-signed.yml"
 
@@ -165,3 +166,91 @@ class ReleasePublicationTests(Workspace):
         self.assertIn("Missing or unsafe release artifact", stderr)
         self.assertTrue(remote["draft"])
         self.assertFalse(remote["immutable"])
+
+
+class GovernanceForgeTokenTests(unittest.TestCase):
+    def setUp(self):
+        self.ci_data = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+        self.release_data = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+
+    def test_governance_job_permissions(self):
+        """Governance job needs actions: read so the audit can query run health."""
+        governance_job = self.ci_data["jobs"]["governance"]
+        self.assertEqual(
+            governance_job.get("permissions"),
+            {"contents": "read", "actions": "read"},
+        )
+
+    def test_hiss_audit_step_env_and_run(self):
+        """HISS audit step reads default-branch run health using the scoped token."""
+        steps = self.ci_data["jobs"]["governance"]["steps"]
+        audit_steps = [s for s in steps if s.get("name") == "HISS audit"]
+        self.assertEqual(len(audit_steps), 1, "HISS audit step must exist")
+        audit_step = audit_steps[0]
+        self.assertEqual(audit_step.get("env"), {"GH_TOKEN": "${{ github.token }}"})
+        self.assertEqual(audit_step.get("run"), "praetorctl audit")
+
+    def test_no_other_governance_step_receives_forge_token(self):
+        """Tokens must not leak to unreviewed governance steps; run health needs actions: read only for audit."""
+        steps = self.ci_data["jobs"]["governance"]["steps"]
+        for step in steps:
+            if step.get("name") == "HISS audit":
+                continue
+            step_name = step.get("name", "unnamed step")
+            env = step.get("env") or {}
+            self.assertNotIn(
+                "GH_TOKEN",
+                env,
+                f"Step {step_name!r} must not have GH_TOKEN in env",
+            )
+            self.assertNotIn(
+                "GITHUB_TOKEN",
+                env,
+                f"Step {step_name!r} must not have GITHUB_TOKEN in env",
+            )
+            step_dump = yaml.safe_dump(step)
+            self.assertNotIn(
+                "github.token",
+                step_dump,
+                f"Step {step_name!r} must not reference github.token",
+            )
+
+    def test_ci_workflow_default_stays_contents_read(self):
+        """The forge read is job-scoped: the workflow-level default grants contents: read only."""
+        self.assertEqual(self.ci_data.get("permissions"), {"contents": "read"})
+
+    def test_release_verify_permissions_exact(self):
+        """Caller release.yml verify job must grant permissions needed by nested CI jobs."""
+        verify_job = self.release_data["jobs"]["verify"]
+        self.assertEqual(
+            verify_job.get("permissions"),
+            {
+                "contents": "read",
+                "issues": "read",
+                "pull-requests": "read",
+                "actions": "read",
+            },
+        )
+
+    def test_ci_job_permissions_are_subset_of_release_verify_caller(self):
+        """Nested reusable workflow jobs cannot exceed caller permissions; run health needs actions: read."""
+        verify_permissions = self.release_data["jobs"]["verify"].get("permissions", {})
+        workflow_permissions = self.ci_data.get("permissions", {})
+        for job_name, job in self.ci_data.get("jobs", {}).items():
+            effective_permissions = job.get("permissions") or workflow_permissions
+            for key, val in effective_permissions.items():
+                self.assertIn(
+                    key,
+                    verify_permissions,
+                    f"Job {job_name} requests extra permission {key!r} not granted by caller release.yml verify",
+                )
+                self.assertEqual(
+                    val,
+                    "read",
+                    f"Job {job_name} permission {key!r} must be 'read', got {val!r}",
+                )
+                self.assertEqual(
+                    verify_permissions.get(key),
+                    "read",
+                    f"Job {job_name} permission {key!r} not granted as 'read' in release.yml verify",
+                )
