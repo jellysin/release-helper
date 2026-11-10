@@ -38,8 +38,15 @@ class ReleaseAuditReplayPlantTests(Workspace):
             staged = command(["git", "diff", "--cached", "--name-only"], cwd=str(self.repo))
             self.assertEqual(staged, "staged.txt")
 
+            symbolic_inside = command(["git", "rev-parse", "--symbolic-full-name", "HEAD"], cwd=str(self.repo))
+            self.assertEqual(symbolic_inside, "HEAD")
+            branch_head = command(["git", "rev-parse", "refs/heads/main"], cwd=str(self.repo))
+            self.assertEqual(branch_head, self.tagged_sha)
+
         head_after = command(["git", "rev-parse", "HEAD"], cwd=str(self.repo))
         self.assertEqual(head_after, self.tagged_sha)
+        symbolic_after = command(["git", "rev-parse", "--symbolic-full-name", "HEAD"], cwd=str(self.repo))
+        self.assertEqual(symbolic_after, "refs/heads/main")
         staged_after = command(["git", "diff", "--cached", "--name-only"], cwd=str(self.repo))
         self.assertEqual(staged_after, "staged.txt")
 
@@ -57,6 +64,19 @@ class ReleaseAuditReplayPlantTests(Workspace):
                 raise RuntimeError("simulated error inside block")
 
         self.assertEqual(command(["git", "rev-parse", "HEAD"], cwd=str(self.repo)), self.tagged_sha)
+        symbolic_after = command(["git", "rev-parse", "--symbolic-full-name", "HEAD"], cwd=str(self.repo))
+        self.assertEqual(symbolic_after, "refs/heads/main")
+
+    def test_planted_commit_boundary_detached_head_stays_detached(self):
+        command(["git", "checkout", "-q", "--detach"], cwd=str(self.repo))
+        with planted_commit(self.repo, "fix: planted"):
+            pass
+
+        symbolic_after = command(["git", "rev-parse", "--symbolic-full-name", "HEAD"], cwd=str(self.repo))
+        self.assertEqual(symbolic_after, "HEAD")
+        self.assertEqual(command(["git", "rev-parse", "HEAD"], cwd=str(self.repo)), self.tagged_sha)
+        staged_after = command(["git", "diff", "--cached", "--name-only"], cwd=str(self.repo))
+        self.assertEqual(staged_after, "staged.txt")
 
     def test_planted_commit_boundary_moved_head_raises_runtime_error(self):
         with self.assertRaises(RuntimeError):

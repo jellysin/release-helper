@@ -92,13 +92,15 @@ def run_git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedPr
 @contextlib.contextmanager
 def planted_commit(tree: Path, subject: str | None) -> Iterator[None]:
     """Put an empty commit with this subject on the tree's HEAD so the audit sees an unreleased fix
-    whatever the latest tag is; restore HEAD on exit.
+    whatever the latest tag is; restore HEAD on exit. A branch-attached HEAD is re-attached to its branch
+    (the branch ref itself is never moved).
     """
     if subject is None:
         yield
         return
 
     original = run_git(tree, "rev-parse", "HEAD").stdout.strip()
+    attached = run_git(tree, "rev-parse", "--symbolic-full-name", "HEAD").stdout.strip()
     planted = run_git(
         tree,
         *PLANT_IDENTITY,
@@ -115,6 +117,8 @@ def planted_commit(tree: Path, subject: str | None) -> Iterator[None]:
         yield
     finally:
         run_git(tree, "update-ref", "--no-deref", "HEAD", original, planted)
+        if attached != "HEAD":
+            run_git(tree, "symbolic-ref", "HEAD", attached)
 
 
 def collect_overlay_paths(repo_root: Path) -> list[str]:
