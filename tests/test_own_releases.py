@@ -74,6 +74,12 @@ class OwnReleaseTests(StepCase):
             self.assertIn(f"{tag}: tag kept with an unpublished draft; superseded by v1.4.2", done.stdout)
         self.assertIn("v1.4.2: version tag has no published release", done.stdout)
 
+    def test_the_superseded_tag_v1_7_1_is_named(self):
+        tags = ["v1.7.2", "v1.7.1", "v1.7.0"]
+        done = self.failed(state([published("v1.7.0")], tags), "1 release problem(s)")
+        self.assertIn("v1.7.1: tag kept with an unpublished draft; superseded by v1.7.2", done.stdout)
+        self.assertIn("v1.7.2: version tag has no published release", done.stdout)
+
     def test_without_any_release_every_version_tag_fails(self):
         done = self.failed(state([], ["v1.0.0", "v1.0.1"]), "2 release problem(s)")
         self.assertIn("v1.0.0: version tag has no published release", done.stdout)

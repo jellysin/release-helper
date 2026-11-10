@@ -48,6 +48,18 @@ def create_python3_stub(stub_dir):
     stub_py.chmod(0o755)
 
 
+def create_praetorctl_stub(stub_dir):
+    """Write an executable praetorctl stub that logs its release environment and arguments."""
+    stub_dir.mkdir(parents=True, exist_ok=True)
+    stub = stub_dir / "praetorctl"
+    stub.write_text(
+        '#!/bin/sh\nprintf \'%s|%s\\n\' "${PRAETOR_RELEASE_PR-unset}" "$*" >> "$STUB_LOG"\nexit 0\n',
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
 def run_make(*args, cwd=REPO_ROOT, env=None, check=False):
     """Run the make binary found on PATH with a sanitized environment and return the process."""
     if MAKE is None or Path(MAKE).name != "make":
@@ -225,6 +237,40 @@ class TestMakefile(unittest.TestCase):
             )
             self.assertNotEqual(env_res.returncode, 0)
             self.assertIn(f"{dollar_venv}/bin/python is missing", env_res.stderr)
+
+
+@unittest.skipUnless(MAKE, "make is not installed")
+class TestReleaseAuditTarget(unittest.TestCase):
+    """Test release-audit and audit Makefile targets with praetorctl stub."""
+
+    def run_with_stub(self, *args):
+        """Run make with a praetorctl stub and no inherited release context; return output, stub and log."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            stub = create_praetorctl_stub(tmp)
+            log = tmp / "stub.log"
+            env = clean_env(STUB_LOG=str(log))
+            env.pop("PRAETOR_RELEASE_PR", None)
+            res = run_make(*args, f"PRAETORCTL={stub}", env=env, check=True)
+            return res.stdout, str(stub), log.read_text(encoding="utf-8") if log.exists() else ""
+
+    def test_release_audit_runs_release_context_offline(self):
+        """Verify release-audit target executes audit --offline in release context."""
+        _, _, log = self.run_with_stub("release-audit")
+        self.assertEqual(log, "true|audit --offline\n")
+
+    def test_default_audit_stays_online(self):
+        """Verify default audit target executes audit online outside release context."""
+        _, _, log = self.run_with_stub("audit")
+        self.assertEqual(log, "unset|audit\n")
+
+    def test_verify_all_runs_both_audits(self):
+        """Verify verify-all dry run lists the offline release audit and the online audit, running neither."""
+        stdout, stub, log = self.run_with_stub("-n", "verify-all", "DEV_VENV=.venv")
+        lines = [line.strip() for line in stdout.splitlines()]
+        self.assertIn(f"PRAETOR_RELEASE_PR=true {stub} audit --offline", lines)
+        self.assertIn(f"{stub} audit", lines)
+        self.assertEqual(log, "")
 
 
 class TestRunMakeGuard(unittest.TestCase):

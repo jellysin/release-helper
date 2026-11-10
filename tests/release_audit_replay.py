@@ -2,17 +2,23 @@
 """Replay release-audit gate failures across default and release pull request contexts.
 
 Validates that governance enforcement passes for clean trees and fails predictably
-when end-to-end evidence or release test levels are missing.
+when end-to-end evidence or release test levels are missing. The end-to-end evidence
+case plants an unreleased fix commit, so the replay holds after any release tag.
 """
 
+import contextlib
 import os
 import shutil
 import subprocess  # nosec B404
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 GIT = shutil.which("git")
+
+# CI checkouts carry no git identity; the planted commit never leaves the replay tree.
+PLANT_IDENTITY = ("-c", "user.name=release-audit-replay", "-c", "user.email=release-audit-replay@example.invalid")
 
 LOAD_SOAK_BLOCK = """    # Repeated catalog publish cycles and volume at the manifest limits.
     load_soak:
@@ -25,20 +31,23 @@ CASES = [
         "name": "fixed-tree",
         "plant_old": None,
         "plant_new": "",
+        "plant_commit": None,
         "default": (0, ["[PASS] Release end-to-end evidence", "[PASS] Release test levels"]),
         "release": (0, ["[PASS] Release end-to-end evidence", "[PASS] Release test levels"]),
     },
     {
-        "name": "e2e-since",
-        "plant_old": "since: 2625f4b711c3580a6e7d59cb854dbb11c16ec34a",
-        "plant_new": "since: 17153e53b83d2b3c36d8542659b0edf51ea8495b",
-        "default": (0, ["[WARN] Release end-to-end evidence"]),
-        "release": (1, ["[FAIL] Release end-to-end evidence"]),
+        "name": "e2e-evidence-missing",
+        "plant_old": None,
+        "plant_new": "",
+        "plant_commit": "fix: planted fix without end-to-end evidence",
+        "default": (0, ["[WARN] Release end-to-end evidence", "planted fix without end-to-end evidence"]),
+        "release": (1, ["[FAIL] Release end-to-end evidence", "planted fix without end-to-end evidence"]),
     },
     {
         "name": "recovery-restore-gap",
         "plant_old": "paths: [tests/test_release_recovery.py]",
         "plant_new": "paths: [tests/no_such_recovery.py]",
+        "plant_commit": None,
         "default": (0, ["[WARN] Release test levels", "recovery_restore"]),
         "release": (1, ["[FAIL] Release test levels", "recovery_restore"]),
     },
@@ -46,6 +55,7 @@ CASES = [
         "name": "load-soak-removed",
         "plant_old": LOAD_SOAK_BLOCK,
         "plant_new": "",
+        "plant_commit": None,
         "default": (1, ["[FAIL] Release test levels", "load_soak"]),
         "release": (1, ["[FAIL] Release test levels", "load_soak"]),
     },
@@ -77,6 +87,38 @@ def run_git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedPr
     if check and res.returncode != 0:
         raise RuntimeError(f"git {' '.join(args[:2])} failed with exit {res.returncode}: {res.stderr.strip()}")
     return res
+
+
+@contextlib.contextmanager
+def planted_commit(tree: Path, subject: str | None) -> Iterator[None]:
+    """Put an empty commit with this subject on the tree's HEAD so the audit sees an unreleased fix
+    whatever the latest tag is; restore HEAD on exit. A branch-attached HEAD is re-attached to its branch
+    (the branch ref itself is never moved).
+    """
+    if subject is None:
+        yield
+        return
+
+    original = run_git(tree, "rev-parse", "HEAD").stdout.strip()
+    attached = run_git(tree, "rev-parse", "--symbolic-full-name", "HEAD").stdout.strip()
+    planted = run_git(
+        tree,
+        *PLANT_IDENTITY,
+        "commit-tree",
+        "--no-gpg-sign",
+        "-p",
+        original,
+        "-m",
+        subject,
+        f"{original}^{{tree}}",
+    ).stdout.strip()
+    run_git(tree, "update-ref", "--no-deref", "HEAD", planted, original)
+    try:
+        yield
+    finally:
+        run_git(tree, "update-ref", "--no-deref", "HEAD", original, planted)
+        if attached != "HEAD":
+            run_git(tree, "symbolic-ref", "HEAD", attached)
 
 
 def collect_overlay_paths(repo_root: Path) -> list[str]:
@@ -165,17 +207,18 @@ def replay_case(engine: str, tree: Path, standards_orig: str, case: dict) -> boo
         standards_path.write_text(planted, encoding="utf-8")
 
     case_passed = True
-    for context in ("default", "release"):
-        expected_rc, required_substrings = case[context]
-        rc, output = run_audit(engine, tree, release_context=(context == "release"))
-        matched_text = all(sub in output for sub in required_substrings)
-        if rc == expected_rc and matched_text:
-            print(f"{name} {context} rc={rc} ok")
-        else:
-            print(f"{name} {context} rc={rc} MISMATCH")
-            for line in output.splitlines()[-40:]:
-                print(line)
-            case_passed = False
+    with planted_commit(tree, case["plant_commit"]):
+        for context in ("default", "release"):
+            expected_rc, required_substrings = case[context]
+            rc, output = run_audit(engine, tree, release_context=(context == "release"))
+            matched_text = all(sub in output for sub in required_substrings)
+            if rc == expected_rc and matched_text:
+                print(f"{name} {context} rc={rc} ok")
+            else:
+                print(f"{name} {context} rc={rc} MISMATCH")
+                for line in output.splitlines()[-40:]:
+                    print(line)
+                case_passed = False
 
     standards_path.write_text(standards_orig, encoding="utf-8")
     return case_passed
