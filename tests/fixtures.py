@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from jellysin_tooling.common import ValidationError
 from jellysin_tooling.package import build
@@ -77,6 +78,36 @@ def write_bundles(directory, files=None):
 
 def approved(info=FIRST):
     return {"guid": info["guid"], "repository": info["repository"], "signerWorkflow": ".github/workflows/release.yml"}
+
+
+def recording_runner(client, remote, repo, output, writes):
+    """Return a runner callback recording gh invocations and updating fake GitHub assets."""
+
+    def runner(arguments):
+        """Execute a simulated gh API call, recording writes and updating fake release assets."""
+        writes.append(arguments)
+        if "POST" in arguments:
+            endpoint = next(arg for arg in arguments if arg.startswith("https://uploads.github.com/"))
+            name = parse_qs(urlparse(endpoint).query)["name"][0]
+            asset_id = len(remote["assets"]) + 1
+            data = (output / name).read_bytes()
+            url = f"https://github.com/{repo}/releases/download/untagged-fixture-1/{name}"
+            remote["assets"].append(
+                {
+                    "id": asset_id,
+                    "url": f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}",
+                    "name": name,
+                    "state": "uploaded",
+                    "size": len(data),
+                    "browser_download_url": url,
+                }
+            )
+            client.assets[repo, asset_id] = data
+            client.downloads[url] = data
+        elif "PATCH" in arguments:
+            client.publish(remote)
+
+    return runner
 
 
 GIT_LOCATION_VARIABLES = frozenset(
