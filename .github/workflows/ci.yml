@@ -336,6 +336,8 @@ jobs:
         run: praetorctl compile-context --verify
       - name: HISS audit
         run: praetorctl audit
+      - name: Replay the release audit gate
+        run: python3 tests/release_audit_replay.py praetorctl
       # No flavor describes a plain Python tool yet (cordanaLLM/praetor#935). The command
       # prints that reason and exits 0; it starts auditing once a flavor matches.
       - name: Flavor audit

@@ -19,7 +19,7 @@ from jellysin_tooling.common import (
 )
 from jellysin_tooling.github import command
 from jellysin_tooling.release import publish
-from tests.fixtures import COMMIT, CREATED, FakeGitHub, Workspace
+from tests.fixtures import COMMIT, CREATED, FakeGitHub, Workspace, recording_runner
 
 
 def make_tar_gz(members_dict, prefix="test-1.0.0"):
@@ -67,11 +67,14 @@ class SourceReleaseTests(Workspace):
         self.addCleanup(patcher.stop)
 
     def make_git_repo(self, files=None):
+        """Initialize and commit a temporary git repository with gpg signing disabled."""
         repo_dir = self.root / "source-repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
         command(["git", "init", "-b", "main"], cwd=str(repo_dir))
         command(["git", "config", "user.name", "Test User"], cwd=str(repo_dir))
         command(["git", "config", "user.email", "test@example.com"], cwd=str(repo_dir))
+        command(["git", "config", "commit.gpgsign", "false"], cwd=str(repo_dir))
+        command(["git", "config", "tag.gpgsign", "false"], cwd=str(repo_dir))
         if files is None:
             files = {"README.md": "# Source Repo\n", "main.py": "print('hello')\n"}
         for rel_path, content in files.items():
@@ -262,7 +265,30 @@ class SourceReleaseTests(Workspace):
         for name in ("source-repo-1.0.0.tar.gz", "release.json", "sbom.spdx.json", "checksums.txt"):
             self.assertEqual((out1 / name).read_bytes(), (out2 / name).read_bytes())
 
+    def test_make_git_repo_and_build_succeeds_with_host_signing_enabled(self):
+        """Validate fixture repo creation and archive building succeed when host gitconfig enforces gpg signing.
+
+        The test fixture must isolate itself from host or system git configurations requiring GPG
+        signing so commits and tags do not fail in environments with global signing turned on.
+        """
+        gitconfig = self.root / "global.gitconfig"
+        gitconfig.write_text(
+            "[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n",
+            encoding="utf-8",
+        )
+        with patch.dict(
+            os.environ,
+            {"GIT_CONFIG_GLOBAL": str(gitconfig), "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_COUNT": "0"},
+        ):
+            repo_dir, commit, tag = self.make_git_repo()
+            out = self.root / "dist"
+            rel = source.build("jellysin/source-repo", tag, commit, CREATED, out, cwd=str(repo_dir))
+            self.assertEqual(rel["semver"], "1.0.0")
+            for name in ("source-repo-1.0.0.tar.gz", "release.json", "sbom.spdx.json", "checksums.txt"):
+                self.assertTrue((out / name).exists())
+
     def test_publish_source_uploads_four_assets_and_patches_draft_false(self):
+        """Validate source publishing uploads all four required assets and marks the draft release published."""
         repo_dir, commit, tag = self.make_git_repo()
         repo = "jellysin/source-repo"
         output = self.root / "dist"
@@ -271,28 +297,7 @@ class SourceReleaseTests(Workspace):
         remote = client.add({"repository": repo}, release, output, draft=True)
         remote["assets"].clear()
         writes = []
-
-        def runner(arguments):
-            writes.append(arguments)
-            if "POST" in arguments:
-                name = arguments[4].split("name=")[1]
-                asset_id = len(remote["assets"]) + 1
-                data = (output / name).read_bytes()
-                url = f"https://github.com/{repo}/releases/download/untagged-fixture-1/{name}"
-                remote["assets"].append(
-                    {
-                        "id": asset_id,
-                        "url": f"https://api.github.com/repos/{repo}/releases/assets/{asset_id}",
-                        "name": name,
-                        "state": "uploaded",
-                        "size": len(data),
-                        "browser_download_url": url,
-                    }
-                )
-                client.assets[repo, asset_id] = data
-                client.downloads[url] = data
-            elif "PATCH" in arguments:
-                client.publish(remote)
+        runner = recording_runner(client, remote, repo, output, writes)
 
         with (
             patch("jellysin_tooling.release.exact_tag", return_value=commit),

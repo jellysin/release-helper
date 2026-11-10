@@ -58,4 +58,36 @@ release:
     # tests/e2e/test_makefile_spaced_venv.py and tests/e2e/test_source_dot_repository.py.
     # #126 shipped without an e2e test; its behaviour is now covered by
     # tests/e2e/test_prepare_release_merge.py and tests/e2e/test_publish_bundle_retry.py.
-    since: 17153e53b83d2b3c36d8542659b0edf51ea8495b
+    # #155 shipped without an e2e test; its behaviour is now covered by
+    # tests/e2e/test_release_file_reader.py.
+    since: 2625f4b711c3580a6e7d59cb854dbb11c16ec34a
+  # The app-service profile requires five release test levels. Each binding names the
+  # tests that exercise the level and the CI step that runs them: the checks job in
+  # .github/workflows/ci.yml. The job is named because build-signed.yml runs make, and
+  # the engine then reads the Makefile's test command into that called-only workflow.
+  test_levels:
+    unit:
+      paths: [tests/test_*.py]
+      job: checks
+      run: unittest discover -s tests
+    e2e:
+      paths: [tests/e2e/**]
+      job: checks
+      run: unittest discover -s tests
+    # The CI job starts real Jellyfin 12 servers, checks that they offer the floor fixture
+    # and that they refuse the wrong-abi fixture (README.md, server check).
+    integration:
+      paths: [actions/server-check/action.yml]
+      job: checks
+      run: tools.py server-check
+    # Verified tag recovery and failed-upload recovery (README.md, plugin repository trust
+    # and recovery).
+    recovery_restore:
+      paths: [tests/test_release_recovery.py]
+      job: checks
+      run: unittest discover -s tests
+    # Repeated catalog publish cycles and volume at the manifest limits.
+    load_soak:
+      paths: [tests/load/**]
+      job: checks
+      run: unittest discover -s tests
