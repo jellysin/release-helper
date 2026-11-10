@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 BUILD_SIGNED_WORKFLOW = ROOT / ".github" / "workflows" / "build-signed.yml"
+# The Actions expression of the job token, not a credential.
+JOB_AUTH_EXPR = "${{ github.token }}"
 
 
 class ReleaseWorkflowShapeTests(unittest.TestCase):
@@ -187,8 +189,37 @@ class GovernanceForgeTokenTests(unittest.TestCase):
         audit_steps = [s for s in steps if s.get("name") == "HISS audit"]
         self.assertEqual(len(audit_steps), 1, "HISS audit step must exist")
         audit_step = audit_steps[0]
-        self.assertEqual(audit_step.get("env"), {"GH_TOKEN": "${{ github.token }}"})
+        self.assertEqual(audit_step.get("env"), {"GH_TOKEN": JOB_AUTH_EXPR})
         self.assertEqual(audit_step.get("run"), "praetorctl audit")
+
+    def test_governance_job_and_workflow_env_carry_no_forge_token(self):
+        """Job-level or workflow-level env reaches every step, so only the audit step may carry the token."""
+        scopes = (
+            ("ci.yml workflow-level", self.ci_data.get("env") or {}),
+            ("governance job", self.ci_data["jobs"]["governance"].get("env") or {}),
+        )
+        for scope, env in scopes:
+            self.assertNotIn(
+                "GH_TOKEN",
+                env,
+                f"{scope} env must not have GH_TOKEN",
+            )
+            self.assertNotIn(
+                "GITHUB_TOKEN",
+                env,
+                f"{scope} env must not have GITHUB_TOKEN",
+            )
+            env_dump = yaml.safe_dump(env)
+            self.assertNotIn(
+                "github.token",
+                env_dump,
+                f"{scope} env must not reference github.token",
+            )
+            self.assertNotIn(
+                "secrets.GITHUB_TOKEN",
+                env_dump,
+                f"{scope} env must not reference secrets.GITHUB_TOKEN",
+            )
 
     def test_no_other_governance_step_receives_forge_token(self):
         """Tokens must not leak to unreviewed governance steps; run health needs actions: read only for audit."""
