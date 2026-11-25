@@ -3,6 +3,7 @@
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,7 @@ LABELS = "Mark merged release PRs whose tag names their merge commit"
 DISPATCH = "Explicitly dispatch release PR checks"
 MINT_STEP = "      - name: Mint the release token\n"
 PATH_STEP = "      - name: Name the release token path\n"
-MINT_ACTION = "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0"
+MINT_PIN = re.compile(r"^uses: actions/create-github-app-token@[0-9a-f]{40} # v\d+\.\d+\.\d+$")
 INTERPRETER = "Refuse an interpreter other than the pinned one"
 CHECKOUT = "      - uses: actions/checkout@"
 SETUP = "      - uses: actions/setup-python@"
@@ -321,7 +322,7 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertIn(ACTION, job_section)
 
         step_lines = [line.strip() for line in contents[token_step_pos:path_step_pos].splitlines()]
-        self.assertIn(f"uses: {MINT_ACTION}", step_lines)
+        self.assertEqual(1, sum(1 for line in step_lines if MINT_PIN.fullmatch(line)))
         self.assertIn("id: app-token", step_lines)
         self.assertIn("if: env.RELEASE_APP_KEY_SET == 'true'", step_lines)
         self.assertIn("client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}", step_lines)
@@ -331,6 +332,30 @@ class WorkflowShapeTests(unittest.TestCase):
         self.assertFalse(any(line.startswith("continue-on-error:") for line in step_lines))
         self.assertFalse(any(line.startswith("owner:") for line in step_lines))
         self.assertFalse(any(line.startswith("repositories:") for line in step_lines))
+
+    def test_mint_pin_accepts_a_new_action_version(self):
+        """A dependency update can change both the commit and the version comment."""
+        self.assertRegex(
+            "uses: actions/create-github-app-token@f418000000000000000000000000000000000000 # v3.4.0", MINT_PIN
+        )
+
+    def test_mint_pin_rejects_invalid_action_references(self):
+        """The mint action requires the expected owner, a full SHA and a version comment."""
+        sha = "a" * 40
+        for line in (
+            "uses: actions/create-github-app-token@v3",
+            f"uses: actions/create-github-app-token@{sha[:-1]} # v3.4.0",
+            f"uses: actions/create-github-app-token@{sha}",
+            f"uses: evil/create-github-app-token@{sha} # v3.4.0",
+        ):
+            with self.subTest(line=line):
+                self.assertNotRegex(line, MINT_PIN)
+
+    def test_mint_pin_rejects_uppercase_and_overlong_shas(self):
+        """The commit must contain exactly 40 lowercase hexadecimal characters."""
+        for sha in ("A" * 40, "a" * 41):
+            with self.subTest(sha=sha):
+                self.assertNotRegex(f"uses: actions/create-github-app-token@{sha} # v3.4.0", MINT_PIN)
 
     def test_path_step_announces_token_source_before_release_please(self):
         """A bounded shell step announces whether the App token or fallback is used."""
